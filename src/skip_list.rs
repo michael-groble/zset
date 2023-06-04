@@ -143,6 +143,12 @@ pub struct IterMut<'a, T: 'a> {
     marker: PhantomData<&'a mut Node<T>>,
 }
 
+struct Insertion<T> {
+    update: [NodePointer<T>; MAX_LEVELS],
+    rank: [usize; MAX_LEVELS],
+    head: NodePointer<T>,
+}
+
 impl<T: std::default::Default + std::cmp::PartialOrd> SkipList<T> {
     pub fn new() -> Self {
         let head = Box::new(Node::head());
@@ -155,42 +161,12 @@ impl<T: std::default::Default + std::cmp::PartialOrd> SkipList<T> {
     }
 
     pub fn insert(&mut self, elt: T, score: f64) {
-        let mut update: [NodePointer<T>; MAX_LEVELS] = [None; MAX_LEVELS];
-        let mut rank: [usize; MAX_LEVELS] = [0; MAX_LEVELS];
-        let mut insert: NodePointer<T> = self.head;
-        for l in (0..=self.highest_level).rev() {
-            rank[l] = if l == self.highest_level {
-                0
-            } else {
-                rank[l + 1]
-            };
-            unsafe {
-                loop {
-                    if let Some(level_insert) = insert {
-                        // Need an unbound lifetime to get 'a
-                        let level_insert = &*level_insert.as_ptr();
-                        let level = &level_insert.levels[l];
-                        if let Some(level_insert) = level.next {
-                            let level_insert = &*level_insert.as_ptr();
-                            if level_insert.score < score
-                                || level_insert.score == score && level_insert.element < elt
-                            {
-                                rank[l] += level.span;
-                                insert = level.next;
-                                continue;
-                            }
-                        }
-                    }
-                    break;
-                }
-            }
-            update[l] = insert;
-        }
+        let mut insertion = self.insertion(&elt, score);
         let level = random_level();
         if level > self.highest_level {
             for l in self.highest_level + 1..=level {
-                rank[l] = 0;
-                update[l] = self.head;
+                insertion.rank[l] = 0;
+                insertion.update[l] = self.head;
                 self.head.map(|node| unsafe {
                     (*node.as_ptr()).levels[l].span = self.len;
                 });
@@ -201,24 +177,23 @@ impl<T: std::default::Default + std::cmp::PartialOrd> SkipList<T> {
         let node: NodePointer<T> = Some(Box::leak(node).into());
         node.map(|node| unsafe {
             for (l, mut insert_level) in (*node.as_ptr()).levels.iter_mut().enumerate() {
-                if let Some(update_level) = update[l] {
+                if let Some(update_level) = insertion.update[l] {
                     let update_level = &mut (*update_level.as_ptr()).levels[l];
                     insert_level.next = update_level.next;
                     update_level.next = Some(NonNull::new_unchecked(node.as_ptr()));
-                    let delta_span = rank[0] - rank[l];
+                    let delta_span = insertion.rank[0] - insertion.rank[l];
                     insert_level.span = update_level.span - delta_span;
                     update_level.span = delta_span + 1;
                 }
             }
             for l in (level + 1)..=self.highest_level {
-                (*update[l].unwrap().as_ptr()).levels[l].span += 1;
+                (*insertion.update[l].unwrap().as_ptr()).levels[l].span += 1;
             }
-            (*node.as_ptr()).prev = if update[0] == self.head {
+            (*node.as_ptr()).prev = if insertion.update[0] == self.head {
                 None
             } else {
-                update[0]
+                insertion.update[0]
             };
-
 
             if let Some(next) = (*node.as_ptr()).levels[0].next {
                 (*next.as_ptr()).prev = Some(NonNull::new_unchecked(node.as_ptr()));
@@ -228,6 +203,38 @@ impl<T: std::default::Default + std::cmp::PartialOrd> SkipList<T> {
         });
 
         self.len += 1;
+    }
+
+    fn insertion(&self, elt: &T, score: f64) -> Insertion<T> {
+        let mut update: [NodePointer<T>; MAX_LEVELS] = [None; MAX_LEVELS];
+        let mut rank: [usize; MAX_LEVELS] = [0; MAX_LEVELS];
+        let mut head: NodePointer<T> = self.head;
+        for l in (0..=self.highest_level).rev() {
+            rank[l] = if l == self.highest_level {
+                0
+            } else {
+                rank[l + 1]
+            };
+            loop {
+                let level_insert = head.unwrap();
+                let level_insert = unsafe { level_insert.as_ref() };
+                let level = &level_insert.levels[l];
+                if let Some(level_insert) = level.next {
+                    let level_insert = unsafe { level_insert.as_ref() };
+                    if level_insert.score < score
+                        || level_insert.score == score && level_insert.element < *elt
+                    {
+                        rank[l] += level.span;
+                        head = level.next;
+                        continue;
+                    }
+                }
+                break;
+            }
+
+            update[l] = head;
+        }
+        Insertion { update, rank, head }
     }
 
     pub fn push_back(&mut self, elt: T, score: f64) {
