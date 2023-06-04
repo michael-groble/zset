@@ -1,6 +1,10 @@
 use rand;
 use rand::{Rng, SeedableRng};
 use std::cell::RefCell;
+use std::ptr::NonNull;
+use std::rc::Rc;
+use zset::ordered_linked_list::OrderedLinkedList;
+use zset::skip_list::SkipList;
 
 thread_local!(
     static ZSET_RNG: RefCell<rand::rngs::SmallRng> =
@@ -108,5 +112,10 @@ fn alt() {
 }
 
 fn main() {
-    alt();
+    let mut l: SkipList<char> = SkipList::new();
+    for c in "yxuvmkdnopcwhlftgjbrqziaes".chars() {
+        l.insert(c, c as u32 as f64);
+    }
+    println!("{}", l.len());
+    println!("{:?}", l);
 }
