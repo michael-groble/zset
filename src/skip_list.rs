@@ -1,7 +1,6 @@
 use rand::{Rng, SeedableRng};
 use std::cell::RefCell;
 use std::fmt::{Debug, Formatter};
-use std::marker::PhantomData;
 use std::ptr::NonNull;
 
 thread_local!(
@@ -30,7 +29,7 @@ fn random_level() -> usize {
 type NodePointer<T> = Option<NonNull<Node<T>>>;
 
 pub struct SkipList<T> {
-    head: NodePointer<T>,
+    head: NonNull<Node<T>>,
     tail: NodePointer<T>,
     len: usize,
     highest_level: usize,
@@ -57,7 +56,7 @@ impl<T: std::fmt::Display + std::fmt::Debug> Debug for SkipList<T> {
         )?;
         for l in 0..=self.highest_level {
             writeln!(f, "  Level {}", l)?;
-            let mut head: NodePointer<T> = self.head;
+            let mut head: NodePointer<T> = Some(self.head);
             while let Some(node) = head {
                 unsafe {
                     let node = &*node.as_ptr();
@@ -69,11 +68,12 @@ impl<T: std::fmt::Display + std::fmt::Debug> Debug for SkipList<T> {
                     };
                     writeln!(
                         f,
-                        "      height: {} span: {} {:?} {} {:?}",
+                        "      height: {} span: {} {:?} {} {} {:?}",
                         node.levels.len(),
                         level.span,
                         head,
                         node.element,
+                        node.score,
                         prev
                     )?;
                     head = level.next;
@@ -129,31 +129,32 @@ impl<T: std::default::Default + std::cmp::PartialOrd> Node<T> {
     }
 }
 
-pub struct Iter<'a, T: 'a> {
-    head: NodePointer<T>,
-    tail: NodePointer<T>,
-    len: usize,
-    marker: PhantomData<&'a Node<T>>,
-}
-
-pub struct IterMut<'a, T: 'a> {
-    head: NodePointer<T>,
-    tail: NodePointer<T>,
-    len: usize,
-    marker: PhantomData<&'a mut Node<T>>,
-}
-
 struct Insertion<T> {
     update: [NodePointer<T>; MAX_LEVELS],
     rank: [usize; MAX_LEVELS],
+}
+
+struct Search<T> {
+    update: [NodePointer<T>; MAX_LEVELS],
     head: NodePointer<T>,
+}
+
+enum RemoveBehavior {
+    Retain,
+    Free
+}
+
+enum RemoveResult<T> {
+    NotFound,
+    Freed,
+    Retained(Box<Node<T>>)
 }
 
 impl<T: std::default::Default + std::cmp::PartialOrd> SkipList<T> {
     pub fn new() -> Self {
         let head = Box::new(Node::head());
         SkipList {
-            head: Some(Box::leak(head).into()),
+            head: Box::leak(head).into(),
             tail: None,
             len: 0,
             highest_level: 0,
@@ -166,10 +167,10 @@ impl<T: std::default::Default + std::cmp::PartialOrd> SkipList<T> {
         if level > self.highest_level {
             for l in self.highest_level + 1..=level {
                 insertion.rank[l] = 0;
-                insertion.update[l] = self.head;
-                self.head.map(|node| unsafe {
-                    (*node.as_ptr()).levels[l].span = self.len;
-                });
+                insertion.update[l] = Some(self.head);
+                unsafe {
+                    (*self.head.as_ptr()).levels[l].span = self.len;
+                };
             }
             self.highest_level = level;
         }
@@ -189,7 +190,7 @@ impl<T: std::default::Default + std::cmp::PartialOrd> SkipList<T> {
             for l in (level + 1)..=self.highest_level {
                 (*insertion.update[l].unwrap().as_ptr()).levels[l].span += 1;
             }
-            (*node.as_ptr()).prev = if insertion.update[0] == self.head {
+            (*node.as_ptr()).prev = if insertion.update[0] == Some(self.head) {
                 None
             } else {
                 insertion.update[0]
@@ -205,10 +206,72 @@ impl<T: std::default::Default + std::cmp::PartialOrd> SkipList<T> {
         self.len += 1;
     }
 
+    pub fn delete(&mut self, elt: T, score: f64) {
+        self.remove(elt, score, RemoveBehavior::Free);
+    }
+
+    fn remove(&mut self, elt: T, score: f64, behavior: RemoveBehavior) -> RemoveResult<T> {
+        let mut search = self.search(&elt, score);
+        let node = unsafe { (*search.head.unwrap().as_ptr()).levels[0].next };
+        if let Some(node) = node {
+            let node_ref = unsafe { node.as_ref() };
+            if node_ref.score == score && node_ref.element == elt {
+                self.delete_node(&mut search, node);
+                let node = unsafe { Box::from_raw(node.as_ptr()) };
+                match behavior {
+                    RemoveBehavior::Retain => {
+                        return RemoveResult::Retained(node)
+                    }
+                    RemoveBehavior::Free => {
+                        return RemoveResult::Freed
+                    }
+                }
+            }
+        }
+        RemoveResult::NotFound
+        //     if (x && score == x->score && sdscmp(x->ele,ele) == 0) {
+        //         zslDeleteNode(zsl, x, update);
+        //         if (!node)
+        //             zslFreeNode(x);
+        //         else
+        //             *node = x;
+        //         return 1;
+        //     }
+        //     return 0; /* not found */
+    }
+
+    fn delete_node(&mut self, search: &mut Search<T>, node: NonNull<Node<T>>) {
+        unsafe {
+            for l in (0..=self.highest_level).rev() {
+                if let Some(update_level) = search.update[l] {
+                    let update_level = &mut (*update_level.as_ptr()).levels[l];
+                    if update_level.next == Some(node) {
+                        update_level.span += (*node.as_ptr()).levels[l].span;
+                        update_level.next = (*node.as_ptr()).levels[l].next;
+                    }
+                    update_level.span -= 1;
+                }
+            }
+            if let Some(next) = (*node.as_ptr()).levels[0].next {
+                (*next.as_ptr()).prev = (*node.as_ptr()).prev;
+            } else {
+                self.tail = (*node.as_ptr()).prev;
+            }
+            loop {
+                if self.head.as_ref().levels[self.highest_level].next.is_none() {
+                    self.highest_level -= 1;
+                    continue;
+                }
+                break;
+            }
+            self.len -= 1;
+        }
+    }
+
     fn insertion(&self, elt: &T, score: f64) -> Insertion<T> {
         let mut update: [NodePointer<T>; MAX_LEVELS] = [None; MAX_LEVELS];
         let mut rank: [usize; MAX_LEVELS] = [0; MAX_LEVELS];
-        let mut head: NodePointer<T> = self.head;
+        let mut head: NodePointer<T> = Some(self.head);
         for l in (0..=self.highest_level).rev() {
             rank[l] = if l == self.highest_level {
                 0
@@ -234,237 +297,35 @@ impl<T: std::default::Default + std::cmp::PartialOrd> SkipList<T> {
 
             update[l] = head;
         }
-        Insertion { update, rank, head }
+        Insertion { update, rank }
     }
 
-    pub fn push_back(&mut self, elt: T, score: f64) {
-        self.push_back_node(Box::new(Node::new(elt, score, 0)));
-    }
-
-    fn push_back_node(&mut self, mut node: Box<Node<T>>) {
-        // This method takes care not to create mutable references to whole nodes,
-        // to maintain validity of aliasing pointers into `element`.
-        unsafe {
-            node.levels[0].next = None;
-            node.prev = self.tail;
-            let node = Some(Box::leak(node).into());
-
-            match self.tail {
-                None => self.head = node,
-                // Not creating new mutable (unique!) references overlapping `element`.
-                Some(tail) => (*tail.as_ptr()).levels[0].next = node,
+    fn search(&self, elt: &T, score: f64) -> Search<T> {
+        let mut update: [NodePointer<T>; MAX_LEVELS] = [None; MAX_LEVELS];
+        let mut head: NodePointer<T> = Some(self.head);
+        for l in (0..=self.highest_level).rev() {
+            loop {
+                let level_insert = head.unwrap();
+                let level_insert = unsafe { level_insert.as_ref() };
+                let level = &level_insert.levels[l];
+                if let Some(level_insert) = level.next {
+                    let level_insert = unsafe { level_insert.as_ref() };
+                    if level_insert.score < score
+                        || level_insert.score == score && level_insert.element < *elt
+                    {
+                        head = level.next;
+                        continue;
+                    }
+                }
+                break;
             }
 
-            self.tail = node;
-            self.len += 1;
+            update[l] = head;
         }
-    }
-    fn pop_front_node(&mut self) -> Option<Box<Node<T>>> {
-        // This method takes care not to create mutable references to whole nodes,
-        // to maintain validity of aliasing pointers into `element`.
-        self.head.map(|node| unsafe {
-            let node = Box::from_raw(node.as_ptr());
-            self.head = node.levels[0].next;
-
-            match self.head {
-                None => self.tail = None,
-                // Not creating new mutable (unique!) references overlapping `element`.
-                Some(head) => (*head.as_ptr()).prev = None,
-            }
-
-            self.len -= 1;
-            node
-        })
+        Search { update, head }
     }
 
-    fn pop_back_node(&mut self) -> Option<Box<Node<T>>> {
-        // This method takes care not to create mutable references to whole nodes,
-        // to maintain validity of aliasing pointers into `element`.
-        self.tail.map(|node| unsafe {
-            let node = Box::from_raw(node.as_ptr());
-            self.tail = node.prev;
-
-            match self.tail {
-                None => self.head = None,
-                // Not creating new mutable (unique!) references overlapping `element`.
-                Some(tail) => (*tail.as_ptr()).levels[0].next = None,
-            }
-
-            self.len -= 1;
-            node
-        })
-    }
-
-    pub fn pop_front(&mut self) -> Option<T> {
-        self.pop_front_node().map(Node::into_element)
-    }
-    pub fn pop_back(&mut self) -> Option<T> {
-        self.pop_back_node().map(Node::into_element)
-    }
     pub fn len(&self) -> usize {
         self.len
-    }
-    pub fn iter(&self) -> Iter<'_, T> {
-        Iter {
-            head: self.head,
-            tail: self.tail,
-            len: self.len,
-            marker: PhantomData,
-        }
-    }
-
-    pub fn iter_mut(&mut self) -> IterMut<'_, T> {
-        IterMut {
-            head: self.head,
-            tail: self.tail,
-            len: self.len,
-            marker: PhantomData,
-        }
-    }
-}
-
-pub struct IntoIter<T> {
-    list: SkipList<T>,
-}
-
-impl<T: std::default::Default + std::cmp::PartialOrd> IntoIterator for SkipList<T> {
-    type Item = T;
-    type IntoIter = IntoIter<T>;
-
-    /// Consumes the list into an iterator yielding elements by value.
-    #[inline]
-    fn into_iter(self) -> IntoIter<T> {
-        IntoIter { list: self }
-    }
-}
-
-impl<'a, T: std::default::Default + std::cmp::PartialOrd> IntoIterator for &'a SkipList<T> {
-    type Item = &'a T;
-    type IntoIter = Iter<'a, T>;
-
-    fn into_iter(self) -> Iter<'a, T> {
-        self.iter()
-    }
-}
-
-impl<'a, T: std::default::Default + std::cmp::PartialOrd> IntoIterator for &'a mut SkipList<T> {
-    type Item = &'a mut T;
-    type IntoIter = IterMut<'a, T>;
-
-    fn into_iter(self) -> IterMut<'a, T> {
-        self.iter_mut()
-    }
-}
-
-impl<'a, T: std::default::Default + std::cmp::PartialOrd> Iterator for Iter<'a, T> {
-    type Item = &'a T;
-
-    #[inline]
-    fn next(&mut self) -> Option<&'a T> {
-        if self.len == 0 {
-            None
-        } else {
-            self.head.map(|node| unsafe {
-                // Need an unbound lifetime to get 'a
-                let node = &*node.as_ptr();
-                self.len -= 1;
-                self.head = node.levels[0].next;
-                &node.element
-            })
-        }
-    }
-
-    #[inline]
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        (self.len, Some(self.len))
-    }
-
-    #[inline]
-    fn last(mut self) -> Option<&'a T> {
-        self.next_back()
-    }
-}
-
-impl<'a, T: std::default::Default + std::cmp::PartialOrd> Iterator for IterMut<'a, T> {
-    type Item = &'a mut T;
-
-    #[inline]
-    fn next(&mut self) -> Option<&'a mut T> {
-        if self.len == 0 {
-            None
-        } else {
-            self.head.map(|node| unsafe {
-                // Need an unbound lifetime to get 'a
-                let node = &mut *node.as_ptr();
-                self.len -= 1;
-                self.head = node.levels[0].next;
-                &mut node.element
-            })
-        }
-    }
-
-    #[inline]
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        (self.len, Some(self.len))
-    }
-
-    #[inline]
-    fn last(mut self) -> Option<&'a mut T> {
-        self.next_back()
-    }
-}
-
-impl<T: std::default::Default + std::cmp::PartialOrd> Iterator for IntoIter<T> {
-    type Item = T;
-
-    #[inline]
-    fn next(&mut self) -> Option<T> {
-        self.list.pop_front()
-    }
-
-    #[inline]
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        (self.list.len, Some(self.list.len))
-    }
-}
-
-impl<T: std::default::Default + std::cmp::PartialOrd> DoubleEndedIterator for IntoIter<T> {
-    #[inline]
-    fn next_back(&mut self) -> Option<T> {
-        self.list.pop_back()
-    }
-}
-
-impl<'a, T: std::default::Default + std::cmp::PartialOrd> DoubleEndedIterator for IterMut<'a, T> {
-    #[inline]
-    fn next_back(&mut self) -> Option<&'a mut T> {
-        if self.len == 0 {
-            None
-        } else {
-            self.tail.map(|node| unsafe {
-                // Need an unbound lifetime to get 'a
-                let node = &mut *node.as_ptr();
-                self.len -= 1;
-                self.tail = node.prev;
-                &mut node.element
-            })
-        }
-    }
-}
-
-impl<'a, T: std::default::Default + std::cmp::PartialOrd> DoubleEndedIterator for Iter<'a, T> {
-    #[inline]
-    fn next_back(&mut self) -> Option<&'a T> {
-        if self.len == 0 {
-            None
-        } else {
-            self.tail.map(|node| unsafe {
-                // Need an unbound lifetime to get 'a
-                let node = &*node.as_ptr();
-                self.len -= 1;
-                self.tail = node.prev;
-                &node.element
-            })
-        }
     }
 }
