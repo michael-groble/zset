@@ -207,6 +207,108 @@ impl<T> SkipList<T> {
             self.len -= 1;
         }
     }
+
+    pub fn is_in_range<R: RangeBounds<f64>>(&self, range: R) -> bool {
+        if range.is_empty() {
+            return false;
+        }
+        unsafe {
+            let node = self.tail;
+            if node.is_none() || range.starts_after(node.unwrap().as_ref().score) {
+                return false;
+            }
+            let node = self.head.as_ref().levels[0].next;
+            if node.is_none() || range.ends_before(node.unwrap().as_ref().score) {
+                return false;
+            }
+        }
+        true
+    }
+
+    fn first_in_range<R: RangeBounds<f64> + Copy>(&self, range: R) -> NodePointer<T> {
+        if !self.is_in_range(range) {
+            return None;
+        }
+        let mut node = Some(self.head);
+
+        for l in (0..=self.highest_level).rev() {
+            loop {
+                let next = unsafe { node.unwrap().as_ref().levels[l].next };
+                if let Some(next) = next {
+                    let score = unsafe { next.as_ref().score };
+                    if range.starts_after(score) {
+                        node = Some(next);
+                        continue;
+                    }
+                }
+                break;
+            }
+        }
+        node = unsafe { Some((node.unwrap().as_ref()).levels[0].next.unwrap()) };
+        node.filter(|&node| !range.ends_before(unsafe { (node.as_ref()).score }))
+    }
+
+    fn last_in_range<R: RangeBounds<f64> + Copy>(&self, range: R) -> NodePointer<T> {
+        if !self.is_in_range(range) {
+            return None;
+        }
+        let mut node = self.head;
+
+        for l in (0..=self.highest_level).rev() {
+            loop {
+                let next = unsafe { node.as_ref().levels[l].next };
+                if let Some(next) = next {
+                    let score = unsafe { next.as_ref().score };
+                    if !range.ends_before(score) {
+                        node = next;
+                        continue;
+                    }
+                }
+                break;
+            }
+        }
+        if range.starts_after(unsafe { (node.as_ref()).score }) {
+            None
+        } else {
+            Some(node)
+        }
+    }
+
+    pub fn delete_range_by_score<R: RangeBounds<f64>>(&mut self, range: R) -> usize {
+        let mut update: [NodePointer<T>; MAX_LEVELS] = [None; MAX_LEVELS];
+        let mut head: NodePointer<T> = Some(self.head);
+        for l in (0..=self.highest_level).rev() {
+            loop {
+                let level_insert = head.unwrap();
+                let level_insert = unsafe { level_insert.as_ref() };
+                let level = &level_insert.levels[l];
+                if let Some(level_insert) = level.next {
+                    let level_insert = unsafe { level_insert.as_ref() };
+                    if range.starts_after(level_insert.score) {
+                        head = level.next;
+                        continue;
+                    }
+                }
+                break;
+            }
+
+            update[l] = head;
+        }
+        head = unsafe { head.unwrap().as_ref().levels[0].next };
+        let mut removed = 0;
+        while head.map_or(false, |node| {
+            !range.ends_before(unsafe { node.as_ref() }.score)
+        }) {
+            let node = head.unwrap();
+            let next = unsafe { node.as_ref().levels[0].next };
+            let mut search = Search { update, head };
+            self.delete_node(&mut search, node);
+            let old = unsafe { Box::from_raw(node.as_ptr()) };
+            removed += 1;
+            head = next;
+        }
+        removed
+    }
 }
 
 impl<T: std::default::Default> SkipList<T> {
@@ -295,7 +397,10 @@ impl<T: std::cmp::PartialOrd> SkipList<T> {
             .expect("update_score called but no matching element");
         unsafe {
             let node_ref = node.as_ptr();
-            assert!(current_score == (*node_ref).score && elt == (*node_ref).element);
+            assert!(
+                current_score == (*node_ref).score && elt == (*node_ref).element,
+                "found node doesn't match"
+            );
 
             if ((*node_ref).prev.is_none()
                 || (*(*node_ref).prev.unwrap().as_ptr()).score < new_score)
@@ -311,23 +416,6 @@ impl<T: std::cmp::PartialOrd> SkipList<T> {
                 self.insert(old.element, new_score);
             }
         }
-    }
-
-    pub fn is_in_range<R: RangeBounds<f64>>(&self, range: R) -> bool {
-        if range.is_empty() {
-            return false;
-        }
-        unsafe {
-            let node = self.tail;
-            if node.is_none() || range.starts_after(node.unwrap().as_ref().score) {
-                return false;
-            }
-            let node = self.head.as_ref().levels[0].next;
-            if node.is_none() || range.ends_before(node.unwrap().as_ref().score) {
-                return false;
-            }
-        }
-        true
     }
 
     fn remove_retain(&mut self, elt: T, score: f64) -> Option<Box<Node<T>>> {

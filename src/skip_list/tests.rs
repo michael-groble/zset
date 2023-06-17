@@ -135,6 +135,33 @@ fn test_in_range() {
         false
     );
 }
+
+#[test]
+fn test_delete_range_by_score() {
+    let mut l: SkipList<char> = SkipList::new();
+
+    l.insert('a', 1_f64);
+    l.insert('b', 2_f64);
+    l.insert('c', 3_f64);
+    l.insert('d', 4_f64);
+
+    l.delete_range_by_score(2.5_f64..2.9_f64);
+    assert_eq!(l.len, 4);
+    l.delete_range_by_score(5.5_f64..5.9_f64);
+    assert_eq!(l.len, 4);
+    l.delete_range_by_score(3_f64..);
+    assert_eq!(l.len, 2);
+    let mut iter = l.iter();
+    assert_eq!(iter.next(), Some((1_f64, &'a')));
+    assert_eq!(iter.next(), Some((2_f64, &'b')));
+    assert_eq!(iter.next(), None);
+    l.delete_range_by_score(..=1_f64);
+    assert_eq!(l.len, 1);
+    let mut iter = l.iter();
+    assert_eq!(iter.next(), Some((2_f64, &'b')));
+    assert_eq!(iter.next(), None);
+}
+
 #[test]
 fn test_drop() {
     static mut DROPS: i32 = 0;
@@ -182,6 +209,33 @@ fn test_drop_with_pop() {
 
     l.pop_head_node();
     l.pop_head_node();
+    assert_eq!(unsafe { DROPS }, 2);
+    drop(l);
+    assert_eq!(unsafe { DROPS }, 4);
+}
+
+#[test]
+fn test_drop_with_range() {
+    static mut DROPS: i32 = 0;
+
+    #[derive(Default, PartialEq, PartialOrd)]
+    struct Elem(i32);
+
+    impl Drop for Elem {
+        fn drop(&mut self) {
+            unsafe {
+                DROPS += 1;
+            }
+        }
+    }
+
+    let mut l = SkipList::new();
+    l.insert(Elem(1), 1_f64);
+    l.insert(Elem(2), 2_f64);
+    l.insert(Elem(3), 3_f64);
+    l.insert(Elem(4), 4_f64);
+
+    l.delete_range_by_score(2_f64..=3_f64);
     assert_eq!(unsafe { DROPS }, 2);
     drop(l);
     assert_eq!(unsafe { DROPS }, 4);
