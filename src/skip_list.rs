@@ -54,8 +54,8 @@ struct Node<T> {
 }
 
 pub struct Iter<'a, T: 'a> {
-    head: Option<NonNull<Node<T>>>,
-    tail: Option<NonNull<Node<T>>>,
+    head: NodePointer<T>,
+    tail: NodePointer<T>,
     len: usize,
     marker: PhantomData<&'a Node<T>>,
 }
@@ -154,13 +154,21 @@ struct Search<T> {
     head: NodePointer<T>,
 }
 
+impl<T> Search<T> {
+    fn node(&mut self) -> NodePointer<T> {
+        match self.head {
+            Some(head) => unsafe { (*head.as_ptr()).levels[0].next },
+            None => None,
+        }
+    }
+}
+
 impl<T> SkipList<T> {
     fn pop_head_node(&mut self) -> Option<Box<Node<T>>> {
         let head = Some(self.head);
         let update: [NodePointer<T>; MAX_LEVELS] = [head; MAX_LEVELS];
         let mut search = Search { update, head };
-        let node = unsafe { (*search.head.unwrap().as_ptr()).levels[0].next };
-        if let Some(node) = node {
+        if let Some(node) = search.node() {
             self.delete_node(&mut search, node);
             return Some(unsafe { Box::from_raw(node.as_ptr()) });
         }
@@ -240,32 +248,34 @@ impl<T: std::cmp::PartialOrd> SkipList<T> {
         }
         let node = Box::new(Node::new(elt, score, level));
         let node: NodePointer<T> = Some(Box::leak(node).into());
-        node.map(|node| unsafe {
-            for (l, mut insert_level) in (*node.as_ptr()).levels.iter_mut().enumerate() {
-                if let Some(update_level) = insertion.update[l] {
-                    let update_level = &mut (*update_level.as_ptr()).levels[l];
-                    insert_level.next = update_level.next;
-                    update_level.next = Some(NonNull::new_unchecked(node.as_ptr()));
-                    let delta_span = insertion.rank[0] - insertion.rank[l];
-                    insert_level.span = update_level.span - delta_span;
-                    update_level.span = delta_span + 1;
+        if let Some(node) = node {
+            unsafe {
+                for (l, mut insert_level) in (*node.as_ptr()).levels.iter_mut().enumerate() {
+                    if let Some(update_level) = insertion.update[l] {
+                        let update_level = &mut (*update_level.as_ptr()).levels[l];
+                        insert_level.next = update_level.next;
+                        update_level.next = Some(NonNull::new_unchecked(node.as_ptr()));
+                        let delta_span = insertion.rank[0] - insertion.rank[l];
+                        insert_level.span = update_level.span - delta_span;
+                        update_level.span = delta_span + 1;
+                    }
+                }
+                for l in (level + 1)..=self.highest_level {
+                    (*insertion.update[l].unwrap().as_ptr()).levels[l].span += 1;
+                }
+                (*node.as_ptr()).prev = if insertion.update[0] == Some(self.head) {
+                    None
+                } else {
+                    insertion.update[0]
+                };
+
+                if let Some(next) = (*node.as_ptr()).levels[0].next {
+                    (*next.as_ptr()).prev = Some(NonNull::new_unchecked(node.as_ptr()));
+                } else {
+                    self.tail = Some(NonNull::new_unchecked(node.as_ptr()));
                 }
             }
-            for l in (level + 1)..=self.highest_level {
-                (*insertion.update[l].unwrap().as_ptr()).levels[l].span += 1;
-            }
-            (*node.as_ptr()).prev = if insertion.update[0] == Some(self.head) {
-                None
-            } else {
-                insertion.update[0]
-            };
-
-            if let Some(next) = (*node.as_ptr()).levels[0].next {
-                (*next.as_ptr()).prev = Some(NonNull::new_unchecked(node.as_ptr()));
-            } else {
-                self.tail = Some(NonNull::new_unchecked(node.as_ptr()));
-            }
-        });
+        }
 
         self.len += 1;
     }
@@ -275,10 +285,34 @@ impl<T: std::cmp::PartialOrd> SkipList<T> {
         removed.is_some()
     }
 
+    pub fn update_score(&mut self, elt: T, current_score: f64, new_score: f64) {
+        let mut search = self.search(&elt, current_score);
+        let node = search
+            .node()
+            .expect("update_score called but no matching element");
+        unsafe {
+            let node_ref = node.as_ptr();
+            assert!(current_score == (*node_ref).score && elt == (*node_ref).element);
+
+            if ((*node_ref).prev.is_none()
+                || (*(*node_ref).prev.unwrap().as_ptr()).score < new_score)
+                && ((*node_ref).levels[0].next.is_none()
+                    || (*(*node_ref).levels[0].next.unwrap().as_ptr()).score > new_score)
+            {
+                // new score does not require list to be re-ordered
+                (*node_ref).score = new_score;
+            } else {
+                // new score requires new location
+                self.delete_node(&mut search, node);
+                let old = Box::from_raw(node.as_ptr());
+                self.insert(old.element, new_score);
+            }
+        }
+    }
+
     fn remove_retain(&mut self, elt: T, score: f64) -> Option<Box<Node<T>>> {
         let mut search = self.search(&elt, score);
-        let node = unsafe { (*search.head.unwrap().as_ptr()).levels[0].next };
-        if let Some(node) = node {
+        if let Some(node) = search.node() {
             let node_ref = unsafe { node.as_ref() };
             if node_ref.score == score && node_ref.element == elt {
                 self.delete_node(&mut search, node);

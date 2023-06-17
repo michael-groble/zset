@@ -79,6 +79,47 @@ fn test_same_score_ordering() {
 }
 
 #[test]
+#[should_panic(expected = "update_score called but no matching element")]
+fn test_update_with_wrong_score() {
+    let mut l: SkipList<char> = SkipList::new();
+    l.insert('a', 1_f64);
+    l.update_score('a', 2_f64, 1_f64);
+}
+
+#[test]
+#[should_panic(expected = "update_score called but no matching element")]
+fn test_update_with_wrong_element() {
+    let mut l: SkipList<char> = SkipList::new();
+    l.insert('a', 1_f64);
+    l.update_score('b', 1_f64, 2_f64);
+}
+
+#[test]
+fn test_update_score() {
+    let mut l: SkipList<char> = SkipList::new();
+
+    l.insert('c', 1_f64);
+    l.insert('b', 2_f64);
+    l.insert('a', 3_f64);
+    let mut iter = l.iter();
+    assert_eq!(l.len, 3);
+    assert_eq!(iter.next(), Some((1_f64, &'c')));
+    assert_eq!(iter.next(), Some((2_f64, &'b')));
+    assert_eq!(iter.next(), Some((3_f64, &'a')));
+    assert_eq!(iter.next(), None);
+    l.update_score('b', 2_f64, 2.5_f64);
+    let mut iter = l.iter();
+    assert_eq!(iter.next(), Some((1_f64, &'c')));
+    assert_eq!(iter.next(), Some((2.5_f64, &'b')));
+    assert_eq!(iter.next(), Some((3_f64, &'a')));
+    l.update_score('b', 2.5_f64, 3.5_f64);
+    let mut iter = l.iter();
+    assert_eq!(iter.next(), Some((1_f64, &'c')));
+    assert_eq!(iter.next(), Some((3_f64, &'a')));
+    assert_eq!(iter.next(), Some((3.5_f64, &'b')));
+}
+
+#[test]
 fn test_drop() {
     static mut DROPS: i32 = 0;
 
