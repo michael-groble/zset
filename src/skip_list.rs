@@ -1,8 +1,11 @@
 use rand::{Rng, SeedableRng};
 use std::cell::RefCell;
+use std::collections::Bound;
 use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 use std::mem;
+use std::ops::Bound::{Excluded, Included, Unbounded};
+use std::ops::RangeBounds;
 use std::ptr::NonNull;
 
 #[cfg(test)]
@@ -310,6 +313,23 @@ impl<T: std::cmp::PartialOrd> SkipList<T> {
         }
     }
 
+    pub fn is_in_range<R: RangeBounds<f64>>(&self, range: R) -> bool {
+        if range.is_empty() {
+            return false;
+        }
+        unsafe {
+            let node = self.tail;
+            if node.is_none() || range.starts_after(node.unwrap().as_ref().score) {
+                return false;
+            }
+            let node = self.head.as_ref().levels[0].next;
+            if node.is_none() || range.ends_before(node.unwrap().as_ref().score) {
+                return false;
+            }
+        }
+        true
+    }
+
     fn remove_retain(&mut self, elt: T, score: f64) -> Option<Box<Node<T>>> {
         let mut search = self.search(&elt, score);
         if let Some(node) = search.node() {
@@ -442,6 +462,44 @@ impl<'a, T: std::default::Default + std::cmp::PartialOrd> DoubleEndedIterator fo
                 self.tail = node.prev;
                 (node.score, &node.element)
             })
+        }
+    }
+}
+
+trait ScoreRange {
+    fn is_empty(&self) -> bool;
+    fn starts_after(&self, score: f64) -> bool;
+    fn ends_before(&self, score: f64) -> bool;
+}
+
+impl<T: RangeBounds<f64>> ScoreRange for T {
+    fn is_empty(&self) -> bool {
+        let (min, minex) = match self.start_bound() {
+            Included(start) => (start, false),
+            Excluded(start) => (start, true),
+            Unbounded => (&f64::NEG_INFINITY, false),
+        };
+        let (max, maxex) = match self.end_bound() {
+            Included(end) => (end, false),
+            Excluded(end) => (end, true),
+            Unbounded => (&f64::INFINITY, false),
+        };
+        (min > max) || (min == max && (minex || maxex))
+    }
+
+    fn starts_after(&self, score: f64) -> bool {
+        match self.start_bound() {
+            Included(start) => start > &score,
+            Excluded(start) => start >= &score,
+            Unbounded => false,
+        }
+    }
+
+    fn ends_before(&self, score: f64) -> bool {
+        match self.end_bound() {
+            Included(end) => end < &score,
+            Excluded(end) => end <= &score,
+            Unbounded => false,
         }
     }
 }

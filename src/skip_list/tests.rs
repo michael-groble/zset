@@ -120,6 +120,22 @@ fn test_update_score() {
 }
 
 #[test]
+fn test_in_range() {
+    let mut l: SkipList<char> = SkipList::new();
+
+    l.insert('d', 1_f64);
+    l.insert('a', 3_f64);
+
+    assert_eq!(l.is_in_range(..1_f64), false);
+    assert_eq!(l.is_in_range(..=1_f64), true);
+    assert_eq!(l.is_in_range(2_f64..5_f64), true);
+    assert_eq!(l.is_in_range(3_f64..), true);
+    assert_eq!(
+        l.is_in_range((Bound::Excluded(3_f64), Bound::Unbounded)),
+        false
+    );
+}
+#[test]
 fn test_drop() {
     static mut DROPS: i32 = 0;
 
