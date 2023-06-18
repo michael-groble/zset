@@ -183,7 +183,7 @@ fn test_drop() {
     l.insert(Elem(3), 3_f64);
     l.insert(Elem(4), 4_f64);
     drop(l);
-    assert_eq!(unsafe { DROPS }, 4);
+    assert_eq!(unsafe { DROPS }, 4 + 1); // one extra from default value in head
 }
 
 #[test]
@@ -211,7 +211,7 @@ fn test_drop_with_pop() {
     l.pop_head_node();
     assert_eq!(unsafe { DROPS }, 2);
     drop(l);
-    assert_eq!(unsafe { DROPS }, 4);
+    assert_eq!(unsafe { DROPS }, 4 + 1); // one extra from default value in head
 }
 
 #[test]
@@ -238,7 +238,7 @@ fn test_drop_with_range() {
     l.delete_range_by_score(2_f64..=3_f64);
     assert_eq!(unsafe { DROPS }, 2);
     drop(l);
-    assert_eq!(unsafe { DROPS }, 4);
+    assert_eq!(unsafe { DROPS }, 4 + 1); // one extra from default value in head
 }
 
 #[test]
@@ -268,5 +268,5 @@ fn test_drop_panic() {
 
     catch_unwind(move || drop(l)).ok();
 
-    assert_eq!(unsafe { DROPS }, 4);
+    assert_eq!(unsafe { DROPS }, 4 + 1); // one extra from default value in head
 }

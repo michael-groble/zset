@@ -195,14 +195,10 @@ impl<T> SkipList<T> {
             } else {
                 self.tail = (*node.as_ptr()).prev;
             }
-            loop {
-                if self.head.as_ref().levels[self.highest_level].next.is_none()
-                    && self.highest_level > 0
-                {
-                    self.highest_level -= 1;
-                    continue;
-                }
-                break;
+            while self.head.as_ref().levels[self.highest_level].next.is_none()
+                && self.highest_level > 0
+            {
+                self.highest_level -= 1;
             }
             self.len -= 1;
         }
@@ -232,16 +228,10 @@ impl<T> SkipList<T> {
         let mut node = Some(self.head);
 
         for l in (0..=self.highest_level).rev() {
-            loop {
-                let next = unsafe { node.unwrap().as_ref().levels[l].next };
-                if let Some(next) = next {
-                    let score = unsafe { next.as_ref().score };
-                    if range.starts_after(score) {
-                        node = Some(next);
-                        continue;
-                    }
-                }
-                break;
+            while let Some(next) = unsafe { node.unwrap().as_ref().levels[l].next }
+                .filter(|next| range.starts_after(unsafe { next.as_ref().score }))
+            {
+                node = Some(next);
             }
         }
         node = unsafe { Some((node.unwrap().as_ref()).levels[0].next.unwrap()) };
@@ -255,16 +245,10 @@ impl<T> SkipList<T> {
         let mut node = self.head;
 
         for l in (0..=self.highest_level).rev() {
-            loop {
-                let next = unsafe { node.as_ref().levels[l].next };
-                if let Some(next) = next {
-                    let score = unsafe { next.as_ref().score };
-                    if !range.ends_before(score) {
-                        node = next;
-                        continue;
-                    }
-                }
-                break;
+            while let Some(next) = unsafe { node.as_ref().levels[l].next }
+                .filter(|next| !range.ends_before(unsafe { next.as_ref().score }))
+            {
+                node = next;
             }
         }
         if range.starts_after(unsafe { (node.as_ref()).score }) {
@@ -278,18 +262,11 @@ impl<T> SkipList<T> {
         let mut update: [NodePointer<T>; MAX_LEVELS] = [None; MAX_LEVELS];
         let mut head: NodePointer<T> = Some(self.head);
         for l in (0..=self.highest_level).rev() {
-            loop {
-                let level_insert = head.unwrap();
-                let level_insert = unsafe { level_insert.as_ref() };
-                let level = &level_insert.levels[l];
-                if let Some(level_insert) = level.next {
-                    let level_insert = unsafe { level_insert.as_ref() };
-                    if range.starts_after(level_insert.score) {
-                        head = level.next;
-                        continue;
-                    }
-                }
-                break;
+            while let Some(next) = head
+                .and_then(|head| unsafe { head.as_ref().levels[l].next })
+                .filter(|next| range.starts_after(unsafe { next.as_ref().score }))
+            {
+                head = Some(next)
             }
 
             update[l] = head;
@@ -303,7 +280,7 @@ impl<T> SkipList<T> {
             let next = unsafe { node.as_ref().levels[0].next };
             let mut search = Search { update, head };
             self.delete_node(&mut search, node);
-            let old = unsafe { Box::from_raw(node.as_ptr()) };
+            let _old = unsafe { Box::from_raw(node.as_ptr()) };
             removed += 1;
             head = next;
         }
@@ -368,11 +345,7 @@ impl<T: std::cmp::PartialOrd> SkipList<T> {
                 for l in (level + 1)..=self.highest_level {
                     (*insertion.update[l].unwrap().as_ptr()).levels[l].span += 1;
                 }
-                (*node.as_ptr()).prev = if insertion.update[0] == Some(self.head) {
-                    None
-                } else {
-                    insertion.update[0]
-                };
+                (*node.as_ptr()).prev = insertion.update[0].filter(|update| update != &self.head);
 
                 if let Some(next) = (*node.as_ptr()).levels[0].next {
                     (*next.as_ptr()).prev = Some(NonNull::new_unchecked(node.as_ptr()));
@@ -440,23 +413,17 @@ impl<T: std::cmp::PartialOrd> SkipList<T> {
             } else {
                 rank[l + 1]
             };
-            loop {
-                let level_insert = head.unwrap();
-                let level_insert = unsafe { level_insert.as_ref() };
-                let level = &level_insert.levels[l];
-                if let Some(level_insert) = level.next {
-                    let level_insert = unsafe { level_insert.as_ref() };
-                    if level_insert.score < score
-                        || level_insert.score == score && level_insert.element < *elt
-                    {
-                        rank[l] += level.span;
-                        head = level.next;
-                        continue;
-                    }
-                }
-                break;
+            while let Some(level) =
+                unsafe { Some(&head.unwrap().as_ref().levels[l]) }.filter(|level| {
+                    level.next.map_or(false, |next| {
+                        let next = unsafe { next.as_ref() };
+                        next.score < score || next.score == score && next.element < *elt
+                    })
+                })
+            {
+                rank[l] += level.span;
+                head = level.next;
             }
-
             update[l] = head;
         }
         Insertion { update, rank }
@@ -465,21 +432,15 @@ impl<T: std::cmp::PartialOrd> SkipList<T> {
     fn search(&self, elt: &T, score: f64) -> Search<T> {
         let mut update: [NodePointer<T>; MAX_LEVELS] = [None; MAX_LEVELS];
         let mut head: NodePointer<T> = Some(self.head);
+
         for l in (0..=self.highest_level).rev() {
-            loop {
-                let level_insert = head.unwrap();
-                let level_insert = unsafe { level_insert.as_ref() };
-                let level = &level_insert.levels[l];
-                if let Some(level_insert) = level.next {
-                    let level_insert = unsafe { level_insert.as_ref() };
-                    if level_insert.score < score
-                        || level_insert.score == score && level_insert.element < *elt
-                    {
-                        head = level.next;
-                        continue;
-                    }
-                }
-                break;
+            while let Some(next) =
+                unsafe { &head.unwrap().as_ref().levels[l].next }.filter(|next| {
+                    let next = unsafe { next.as_ref() };
+                    next.score < score || next.score == score && next.element < *elt
+                })
+            {
+                head = Some(next);
             }
 
             update[l] = head;
@@ -497,6 +458,7 @@ impl<T> Drop for SkipList<T> {
                 // Continue the same loop we do below. This only runs when a destructor has
                 // panicked. If another one panics this will abort.
                 while self.0.pop_head_node().is_some() {}
+                unsafe { drop(Box::from_raw(self.0.head.as_ptr())) }
             }
         }
 
@@ -505,6 +467,7 @@ impl<T> Drop for SkipList<T> {
             drop(node);
             mem::forget(guard);
         }
+        unsafe { drop(Box::from_raw(self.head.as_ptr())) }
     }
 }
 
