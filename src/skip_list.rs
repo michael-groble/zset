@@ -34,11 +34,6 @@ fn random_level() -> usize {
     level
 }
 
-pub trait Score: Copy + Clone + std::cmp::PartialOrd {
-    const INFINITY: Self;
-    const NEG_INFINITY: Self;
-}
-
 type NodePointer<T, S> = Option<NonNull<Node<T, S>>>;
 
 pub struct SkipList<T, S> {
@@ -210,7 +205,7 @@ impl<T, S> SkipList<T, S> {
     }
 }
 
-impl<T, S: Score> SkipList<T, S> {
+impl<T, S: internal::Score> SkipList<T, S> {
     pub fn is_in_range<R: RangeBounds<S>>(&self, range: R) -> bool {
         if range.is_empty() {
             return false;
@@ -536,7 +531,7 @@ trait ScoreRange<S> {
 
 impl<T: RangeBounds<S>, S> ScoreRange<S> for T
 where
-    S: Score,
+    S: internal::Score + PartialOrd,
 {
     fn is_empty(&self) -> bool {
         let infinity = S::INFINITY;
@@ -571,27 +566,33 @@ where
     }
 }
 
-macro_rules! impl_score_float {
+mod internal {
+    pub trait Score: Copy + PartialOrd {
+        const INFINITY: Self;
+        const NEG_INFINITY: Self;
+    }
+    macro_rules! impl_score_float {
     ($($F:ident),*) => {
         $(
             impl Score for $F {
-                const INFINITY: Self = $F::INFINITY;
-                const NEG_INFINITY: Self = $F::NEG_INFINITY;
+                const INFINITY: Self = <Self>::INFINITY;
+                const NEG_INFINITY: Self = <Self>::NEG_INFINITY;
             }
         )*
     };
 }
 
-macro_rules! impl_score_int {
+    macro_rules! impl_score_int {
     ($($F:ident),*) => {
         $(
             impl Score for $F {
-                const INFINITY: Self = $F::MAX;
-                const NEG_INFINITY: Self = $F::MIN;
+                const INFINITY: Self = <Self>::MAX;
+                const NEG_INFINITY: Self = <Self>::MIN;
             }
         )*
     };
 }
 
-impl_score_float!(f32, f64);
-impl_score_int!(u8, u16, u32, u64, u128, i8, i16, i32, i64, i128);
+    impl_score_float!(f32, f64);
+    impl_score_int!(u8, u16, u32, u64, u128, i8, i16, i32, i64, i128);
+}
