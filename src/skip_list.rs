@@ -3,10 +3,10 @@ use std::cell::RefCell;
 use std::collections::Bound;
 use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
-use std::mem;
 use std::ops::Bound::{Excluded, Included, Unbounded};
 use std::ops::RangeBounds;
 use std::ptr::NonNull;
+use std::{cmp, mem};
 
 #[cfg(test)]
 mod tests;
@@ -34,36 +34,41 @@ fn random_level() -> usize {
     level
 }
 
-type NodePointer<T> = Option<NonNull<Node<T>>>;
-
-pub struct SkipList<T> {
-    head: NonNull<Node<T>>,
-    tail: NodePointer<T>,
-    len: usize,
-    highest_level: usize,
-    marker: PhantomData<Box<Node<T>>>,
+pub trait Score: Copy + Clone + std::cmp::PartialOrd {
+    const INFINITY: Self;
+    const NEG_INFINITY: Self;
 }
 
-struct Level<T> {
-    next: NodePointer<T>,
+type NodePointer<T, S> = Option<NonNull<Node<T, S>>>;
+
+pub struct SkipList<T, S> {
+    head: NonNull<Node<T, S>>,
+    tail: NodePointer<T, S>,
+    len: usize,
+    highest_level: usize,
+    marker: PhantomData<Box<Node<T, S>>>,
+}
+
+struct Level<T, S> {
+    next: NodePointer<T, S>,
     span: usize,
 }
 
-struct Node<T> {
-    levels: Vec<Level<T>>,
-    prev: NodePointer<T>,
+struct Node<T, S> {
+    levels: Vec<Level<T, S>>,
+    prev: NodePointer<T, S>,
     element: T,
-    score: f64,
+    score: S,
 }
 
-pub struct Iter<'a, T: 'a> {
-    head: NodePointer<T>,
-    tail: NodePointer<T>,
+pub struct Iter<'a, T: 'a, S> {
+    head: NodePointer<T, S>,
+    tail: NodePointer<T, S>,
     len: usize,
-    marker: PhantomData<&'a Node<T>>,
+    marker: PhantomData<&'a Node<T, S>>,
 }
 
-impl<T: std::fmt::Display + std::fmt::Debug + std::cmp::PartialOrd> Debug for SkipList<T> {
+impl<T: std::fmt::Display + std::fmt::Debug, S: std::fmt::Display> Debug for SkipList<T, S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         writeln!(
             f,
@@ -72,7 +77,7 @@ impl<T: std::fmt::Display + std::fmt::Debug + std::cmp::PartialOrd> Debug for Sk
         )?;
         for l in 0..=self.highest_level {
             writeln!(f, "  Level {}", l)?;
-            let mut head: NodePointer<T> = Some(self.head);
+            let mut head: NodePointer<T, S> = Some(self.head);
             while let Some(node) = head {
                 unsafe {
                     let node = &*node.as_ptr();
@@ -100,13 +105,13 @@ impl<T: std::fmt::Display + std::fmt::Debug + std::cmp::PartialOrd> Debug for Sk
     }
 }
 
-impl<T: std::default::Default> Default for SkipList<T> {
+impl<T: std::default::Default, S: std::default::Default> Default for SkipList<T, S> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<T: std::default::Default> Node<T> {
+impl<T: std::default::Default, S: std::default::Default> Node<T, S> {
     fn head() -> Self {
         let mut levels = Vec::with_capacity(MAX_LEVELS);
         for _ in 0..MAX_LEVELS {
@@ -120,13 +125,13 @@ impl<T: std::default::Default> Node<T> {
             levels,
             prev: None,
             element,
-            score: 0.0,
+            score: Default::default(),
         }
     }
 }
 
-impl<T> Node<T> {
-    fn new(element: T, score: f64, level: usize) -> Self {
+impl<T, S> Node<T, S> {
+    fn new(element: T, score: S, level: usize) -> Self {
         let mut levels = Vec::with_capacity(level + 1);
         for _ in 0..levels.capacity() {
             levels.push(Level {
@@ -147,18 +152,18 @@ impl<T> Node<T> {
     }
 }
 
-struct Insertion<T> {
-    update: [NodePointer<T>; MAX_LEVELS],
+struct Insertion<T, S> {
+    update: [NodePointer<T, S>; MAX_LEVELS],
     rank: [usize; MAX_LEVELS],
 }
 
-struct Search<T> {
-    update: [NodePointer<T>; MAX_LEVELS],
-    head: NodePointer<T>,
+struct Search<T, S> {
+    update: [NodePointer<T, S>; MAX_LEVELS],
+    head: NodePointer<T, S>,
 }
 
-impl<T> Search<T> {
-    fn node(&mut self) -> NodePointer<T> {
+impl<T, S> Search<T, S> {
+    fn node(&mut self) -> NodePointer<T, S> {
         match self.head {
             Some(head) => unsafe { (*head.as_ptr()).levels[0].next },
             None => None,
@@ -166,19 +171,8 @@ impl<T> Search<T> {
     }
 }
 
-impl<T> SkipList<T> {
-    fn pop_head_node(&mut self) -> Option<Box<Node<T>>> {
-        let head = Some(self.head);
-        let update: [NodePointer<T>; MAX_LEVELS] = [head; MAX_LEVELS];
-        let mut search = Search { update, head };
-        if let Some(node) = search.node() {
-            self.delete_node(&mut search, node);
-            return Some(unsafe { Box::from_raw(node.as_ptr()) });
-        }
-        None
-    }
-
-    fn delete_node(&mut self, search: &mut Search<T>, node: NonNull<Node<T>>) {
+impl<T, S> SkipList<T, S> {
+    fn delete_node(&mut self, search: &mut Search<T, S>, node: NonNull<Node<T, S>>) {
         unsafe {
             for l in (0..=self.highest_level).rev() {
                 if let Some(update_level) = search.update[l] {
@@ -204,7 +198,20 @@ impl<T> SkipList<T> {
         }
     }
 
-    pub fn is_in_range<R: RangeBounds<f64>>(&self, range: R) -> bool {
+    fn pop_head_node(&mut self) -> Option<Box<Node<T, S>>> {
+        let head = Some(self.head);
+        let update: [NodePointer<T, S>; MAX_LEVELS] = [head; MAX_LEVELS];
+        let mut search = Search { update, head };
+        if let Some(node) = search.node() {
+            self.delete_node(&mut search, node);
+            return Some(unsafe { Box::from_raw(node.as_ptr()) });
+        }
+        None
+    }
+}
+
+impl<T, S: Score> SkipList<T, S> {
+    pub fn is_in_range<R: RangeBounds<S>>(&self, range: R) -> bool {
         if range.is_empty() {
             return false;
         }
@@ -221,7 +228,7 @@ impl<T> SkipList<T> {
         true
     }
 
-    fn first_in_range<R: RangeBounds<f64> + Copy>(&self, range: R) -> NodePointer<T> {
+    fn first_in_range<R: RangeBounds<S> + Copy>(&self, range: R) -> NodePointer<T, S> {
         if !self.is_in_range(range) {
             return None;
         }
@@ -238,7 +245,7 @@ impl<T> SkipList<T> {
         node.filter(|&node| !range.ends_before(unsafe { (node.as_ref()).score }))
     }
 
-    fn last_in_range<R: RangeBounds<f64> + Copy>(&self, range: R) -> NodePointer<T> {
+    fn last_in_range<R: RangeBounds<S> + Copy>(&self, range: R) -> NodePointer<T, S> {
         if !self.is_in_range(range) {
             return None;
         }
@@ -258,9 +265,9 @@ impl<T> SkipList<T> {
         }
     }
 
-    pub fn delete_range_by_score<R: RangeBounds<f64>>(&mut self, range: R) -> usize {
-        let mut update: [NodePointer<T>; MAX_LEVELS] = [None; MAX_LEVELS];
-        let mut head: NodePointer<T> = Some(self.head);
+    pub fn delete_range_by_score<R: RangeBounds<S>>(&mut self, range: R) -> usize {
+        let mut update: [NodePointer<T, S>; MAX_LEVELS] = [None; MAX_LEVELS];
+        let mut head: NodePointer<T, S> = Some(self.head);
         for l in (0..=self.highest_level).rev() {
             while let Some(next) = head
                 .and_then(|head| unsafe { head.as_ref().levels[l].next })
@@ -280,7 +287,7 @@ impl<T> SkipList<T> {
             let next = unsafe { node.as_ref().levels[0].next };
             let mut search = Search { update, head };
             self.delete_node(&mut search, node);
-            let _old = unsafe { Box::from_raw(node.as_ptr()) };
+            unsafe { Box::from_raw(node.as_ptr()) };
             removed += 1;
             head = next;
         }
@@ -288,7 +295,7 @@ impl<T> SkipList<T> {
     }
 }
 
-impl<T: std::default::Default> SkipList<T> {
+impl<T: std::default::Default, S: std::default::Default> SkipList<T, S> {
     pub fn new() -> Self {
         let head = Box::new(Node::head());
         SkipList {
@@ -304,7 +311,7 @@ impl<T: std::default::Default> SkipList<T> {
         self.len
     }
 
-    pub fn iter(&self) -> Iter<'_, T> {
+    pub fn iter(&self) -> Iter<'_, T, S> {
         Iter {
             head: (unsafe { self.head.as_ref() }).levels[0].next,
             tail: self.tail,
@@ -314,8 +321,8 @@ impl<T: std::default::Default> SkipList<T> {
     }
 }
 
-impl<T: std::cmp::PartialOrd> SkipList<T> {
-    pub fn insert(&mut self, elt: T, score: f64) {
+impl<T: std::cmp::PartialOrd, S: std::cmp::PartialOrd + Clone + Copy> SkipList<T, S> {
+    pub fn insert(&mut self, elt: T, score: S) {
         let mut insertion = self.insertion(&elt, score);
         let level = random_level();
         if level > self.highest_level {
@@ -329,7 +336,7 @@ impl<T: std::cmp::PartialOrd> SkipList<T> {
             self.highest_level = level;
         }
         let node = Box::new(Node::new(elt, score, level));
-        let node: NodePointer<T> = Some(Box::leak(node).into());
+        let node: NodePointer<T, S> = Some(Box::leak(node).into());
         if let Some(node) = node {
             unsafe {
                 for (l, mut insert_level) in (*node.as_ptr()).levels.iter_mut().enumerate() {
@@ -358,12 +365,12 @@ impl<T: std::cmp::PartialOrd> SkipList<T> {
         self.len += 1;
     }
 
-    pub fn delete(&mut self, elt: T, score: f64) -> bool {
+    pub fn delete(&mut self, elt: T, score: S) -> bool {
         let removed = self.remove_retain(elt, score);
         removed.is_some()
     }
 
-    pub fn update_score(&mut self, elt: T, current_score: f64, new_score: f64) {
+    pub fn update_score(&mut self, elt: T, current_score: S, new_score: S) {
         let mut search = self.search(&elt, current_score);
         let node = search
             .node()
@@ -391,7 +398,7 @@ impl<T: std::cmp::PartialOrd> SkipList<T> {
         }
     }
 
-    fn remove_retain(&mut self, elt: T, score: f64) -> Option<Box<Node<T>>> {
+    fn remove_retain(&mut self, elt: T, score: S) -> Option<Box<Node<T, S>>> {
         let mut search = self.search(&elt, score);
         if let Some(node) = search.node() {
             let node_ref = unsafe { node.as_ref() };
@@ -403,10 +410,10 @@ impl<T: std::cmp::PartialOrd> SkipList<T> {
         None
     }
 
-    fn insertion(&self, elt: &T, score: f64) -> Insertion<T> {
-        let mut update: [NodePointer<T>; MAX_LEVELS] = [None; MAX_LEVELS];
+    fn insertion(&self, elt: &T, score: S) -> Insertion<T, S> {
+        let mut update: [NodePointer<T, S>; MAX_LEVELS] = [None; MAX_LEVELS];
         let mut rank: [usize; MAX_LEVELS] = [0; MAX_LEVELS];
-        let mut head: NodePointer<T> = Some(self.head);
+        let mut head: NodePointer<T, S> = Some(self.head);
         for l in (0..=self.highest_level).rev() {
             rank[l] = if l == self.highest_level {
                 0
@@ -429,9 +436,9 @@ impl<T: std::cmp::PartialOrd> SkipList<T> {
         Insertion { update, rank }
     }
 
-    fn search(&self, elt: &T, score: f64) -> Search<T> {
-        let mut update: [NodePointer<T>; MAX_LEVELS] = [None; MAX_LEVELS];
-        let mut head: NodePointer<T> = Some(self.head);
+    fn search(&self, elt: &T, score: S) -> Search<T, S> {
+        let mut update: [NodePointer<T, S>; MAX_LEVELS] = [None; MAX_LEVELS];
+        let mut head: NodePointer<T, S> = Some(self.head);
 
         for l in (0..=self.highest_level).rev() {
             while let Some(next) =
@@ -449,11 +456,11 @@ impl<T: std::cmp::PartialOrd> SkipList<T> {
     }
 }
 
-impl<T> Drop for SkipList<T> {
+impl<T, S> Drop for SkipList<T, S> {
     fn drop(&mut self) {
-        struct DropGuard<'a, T>(&'a mut SkipList<T>);
+        struct DropGuard<'a, T, S>(&'a mut SkipList<T, S>);
 
-        impl<'a, T> Drop for DropGuard<'a, T> {
+        impl<'a, T, S> Drop for DropGuard<'a, T, S> {
             fn drop(&mut self) {
                 // Continue the same loop we do below. This only runs when a destructor has
                 // panicked. If another one panics this will abort.
@@ -471,11 +478,13 @@ impl<T> Drop for SkipList<T> {
     }
 }
 
-impl<'a, T: std::default::Default + std::cmp::PartialOrd> Iterator for Iter<'a, T> {
-    type Item = (f64, &'a T);
+impl<'a, T: std::default::Default + std::cmp::PartialOrd, S: Clone + Copy> Iterator
+    for Iter<'a, T, S>
+{
+    type Item = (S, &'a T);
 
     #[inline]
-    fn next(&mut self) -> Option<(f64, &'a T)> {
+    fn next(&mut self) -> Option<(S, &'a T)> {
         if self.len == 0 {
             None
         } else {
@@ -495,14 +504,16 @@ impl<'a, T: std::default::Default + std::cmp::PartialOrd> Iterator for Iter<'a, 
     }
 
     #[inline]
-    fn last(mut self) -> Option<(f64, &'a T)> {
+    fn last(mut self) -> Option<(S, &'a T)> {
         self.next_back()
     }
 }
 
-impl<'a, T: std::default::Default + std::cmp::PartialOrd> DoubleEndedIterator for Iter<'a, T> {
+impl<'a, T: std::default::Default + std::cmp::PartialOrd, S: Clone + Copy> DoubleEndedIterator
+    for Iter<'a, T, S>
+{
     #[inline]
-    fn next_back(&mut self) -> Option<(f64, &'a T)> {
+    fn next_back(&mut self) -> Option<(S, &'a T)> {
         if self.len == 0 {
             None
         } else {
@@ -517,28 +528,33 @@ impl<'a, T: std::default::Default + std::cmp::PartialOrd> DoubleEndedIterator fo
     }
 }
 
-trait ScoreRange {
+trait ScoreRange<S> {
     fn is_empty(&self) -> bool;
-    fn starts_after(&self, score: f64) -> bool;
-    fn ends_before(&self, score: f64) -> bool;
+    fn starts_after(&self, score: S) -> bool;
+    fn ends_before(&self, score: S) -> bool;
 }
 
-impl<T: RangeBounds<f64>> ScoreRange for T {
+impl<T: RangeBounds<S>, S> ScoreRange<S> for T
+where
+    S: Score,
+{
     fn is_empty(&self) -> bool {
+        let infinity = S::INFINITY;
+        let neg_infinity = S::NEG_INFINITY;
         let (min, minex) = match self.start_bound() {
             Included(start) => (start, false),
             Excluded(start) => (start, true),
-            Unbounded => (&f64::NEG_INFINITY, false),
+            Unbounded => (&neg_infinity, false),
         };
         let (max, maxex) = match self.end_bound() {
             Included(end) => (end, false),
             Excluded(end) => (end, true),
-            Unbounded => (&f64::INFINITY, false),
+            Unbounded => (&infinity, false),
         };
         (min > max) || (min == max && (minex || maxex))
     }
 
-    fn starts_after(&self, score: f64) -> bool {
+    fn starts_after(&self, score: S) -> bool {
         match self.start_bound() {
             Included(start) => start > &score,
             Excluded(start) => start >= &score,
@@ -546,7 +562,7 @@ impl<T: RangeBounds<f64>> ScoreRange for T {
         }
     }
 
-    fn ends_before(&self, score: f64) -> bool {
+    fn ends_before(&self, score: S) -> bool {
         match self.end_bound() {
             Included(end) => end < &score,
             Excluded(end) => end <= &score,
@@ -554,3 +570,28 @@ impl<T: RangeBounds<f64>> ScoreRange for T {
         }
     }
 }
+
+macro_rules! impl_score_float {
+    ($($F:ident),*) => {
+        $(
+            impl Score for $F {
+                const INFINITY: Self = $F::INFINITY;
+                const NEG_INFINITY: Self = $F::NEG_INFINITY;
+            }
+        )*
+    };
+}
+
+macro_rules! impl_score_int {
+    ($($F:ident),*) => {
+        $(
+            impl Score for $F {
+                const INFINITY: Self = $F::MAX;
+                const NEG_INFINITY: Self = $F::MIN;
+            }
+        )*
+    };
+}
+
+impl_score_float!(f32, f64);
+impl_score_int!(u8, u16, u32, u64, u128, i8, i16, i32, i64, i128);

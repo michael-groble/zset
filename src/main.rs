@@ -112,14 +112,14 @@ fn alt() {
 }
 
 fn main() {
-    let mut l: SkipList<char> = SkipList::new();
+    let mut l = SkipList::new();
     for c in "yxuvmkdnopcwhlftgjbrqziaes".chars() {
-        l.insert(c, c as u32 as f64);
+        l.insert(c, c as u32);
     }
     println!("{}", l.len());
     println!("{:?}", l);
     for c in "hijlk".chars() {
-        l.delete(c, c as u32 as f64);
+        l.delete(c, c as u32);
     }
     println!("{}", l.len());
     println!("{:?}", l);
