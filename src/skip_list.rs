@@ -203,6 +203,19 @@ impl<T, S> SkipList<T, S> {
         }
         None
     }
+
+    pub fn iter(&self) -> Iter<'_, T, S> {
+        Iter {
+            head: (unsafe { self.head.as_ref() }).levels[0].next,
+            tail: self.tail,
+            len: self.len,
+            marker: PhantomData,
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.len
+    }
 }
 
 impl<T, S: internal::Score> SkipList<T, S> {
@@ -298,19 +311,6 @@ impl<T: std::default::Default, S: std::default::Default> SkipList<T, S> {
             tail: None,
             len: 0,
             highest_level: 0,
-            marker: PhantomData,
-        }
-    }
-
-    pub fn len(&self) -> usize {
-        self.len
-    }
-
-    pub fn iter(&self) -> Iter<'_, T, S> {
-        Iter {
-            head: (unsafe { self.head.as_ref() }).levels[0].next,
-            tail: self.tail,
-            len: self.len,
             marker: PhantomData,
         }
     }
@@ -473,7 +473,7 @@ impl<T, S> Drop for SkipList<T, S> {
     }
 }
 
-impl<'a, T: std::default::Default + std::cmp::PartialOrd, S: Clone + Copy> Iterator
+impl<'a, T, S: Clone + Copy> Iterator
     for Iter<'a, T, S>
 {
     type Item = (&'a T, S);
@@ -504,7 +504,7 @@ impl<'a, T: std::default::Default + std::cmp::PartialOrd, S: Clone + Copy> Itera
     }
 }
 
-impl<'a, T: std::default::Default + std::cmp::PartialOrd, S: Clone + Copy> DoubleEndedIterator
+impl<'a, T, S: Clone + Copy> DoubleEndedIterator
     for Iter<'a, T, S>
 {
     #[inline]
