@@ -52,8 +52,8 @@ struct Level<T, S> {
 struct Node<T, S> {
     levels: Vec<Level<T, S>>,
     prev: NodePointer<T, S>,
-    element: T,
-    score: S,
+    element: Option<T>, // only None in head
+    score: Option<S>,   // only None in head
 }
 
 pub struct Iter<'a, T: 'a, S> {
@@ -88,8 +88,8 @@ impl<T: std::fmt::Display + std::fmt::Debug, S: std::fmt::Display> Debug for Ski
                         node.levels.len(),
                         level.span,
                         head,
-                        node.element,
-                        node.score,
+                        node.element(),
+                        node.score(),
                         prev
                     )?;
                     head = level.next;
@@ -106,7 +106,7 @@ impl<T: std::default::Default, S: std::default::Default> Default for SkipList<T,
     }
 }
 
-impl<T: std::default::Default, S: std::default::Default> Node<T, S> {
+impl<T, S> Node<T, S> {
     fn head() -> Self {
         let mut levels = Vec::with_capacity(MAX_LEVELS);
         for _ in 0..MAX_LEVELS {
@@ -115,13 +115,20 @@ impl<T: std::default::Default, S: std::default::Default> Node<T, S> {
                 span: 0,
             })
         }
-        let element: T = Default::default();
         Node {
             levels,
             prev: None,
-            element,
-            score: Default::default(),
+            element: None,
+            score: None,
         }
+    }
+
+    fn element(&self) -> &T {
+        self.element.as_ref().unwrap()
+    }
+
+    fn score(&self) -> &S {
+        self.score.as_ref().unwrap()
     }
 }
 
@@ -137,13 +144,13 @@ impl<T, S> Node<T, S> {
         Node {
             levels,
             prev: None,
-            element,
-            score,
+            element: Some(element),
+            score: Some(score),
         }
     }
 
     fn into_element(self: Box<Self>) -> T {
-        self.element
+        self.element.unwrap()
     }
 }
 
@@ -225,11 +232,11 @@ impl<T, S: internal::Score> SkipList<T, S> {
         }
         unsafe {
             let node = self.tail;
-            if node.is_none() || range.starts_after(node.unwrap().as_ref().score) {
+            if node.is_none() || range.starts_after(*node.unwrap().as_ref().score()) {
                 return false;
             }
             let node = self.head.as_ref().levels[0].next;
-            if node.is_none() || range.ends_before(node.unwrap().as_ref().score) {
+            if node.is_none() || range.ends_before(*node.unwrap().as_ref().score()) {
                 return false;
             }
         }
@@ -244,13 +251,13 @@ impl<T, S: internal::Score> SkipList<T, S> {
 
         for l in (0..=self.highest_level).rev() {
             while let Some(next) = unsafe { node.unwrap().as_ref().levels[l].next }
-                .filter(|next| range.starts_after(unsafe { next.as_ref().score }))
+                .filter(|next| range.starts_after(unsafe { *next.as_ref().score() }))
             {
                 node = Some(next);
             }
         }
         node = unsafe { Some((node.unwrap().as_ref()).levels[0].next.unwrap()) };
-        node.filter(|&node| !range.ends_before(unsafe { (node.as_ref()).score }))
+        node.filter(|&node| !range.ends_before(unsafe { *node.as_ref().score() }))
     }
 
     fn last_in_range<R: RangeBounds<S> + Copy>(&self, range: R) -> NodePointer<T, S> {
@@ -261,12 +268,12 @@ impl<T, S: internal::Score> SkipList<T, S> {
 
         for l in (0..=self.highest_level).rev() {
             while let Some(next) = unsafe { node.as_ref().levels[l].next }
-                .filter(|next| !range.ends_before(unsafe { next.as_ref().score }))
+                .filter(|next| !range.ends_before(unsafe { *next.as_ref().score() }))
             {
                 node = next;
             }
         }
-        if range.starts_after(unsafe { (node.as_ref()).score }) {
+        if range.starts_after(unsafe { *node.as_ref().score() }) {
             None
         } else {
             Some(node)
@@ -279,7 +286,7 @@ impl<T, S: internal::Score> SkipList<T, S> {
         for l in (0..=self.highest_level).rev() {
             while let Some(next) = head
                 .and_then(|head| unsafe { head.as_ref().levels[l].next })
-                .filter(|next| range.starts_after(unsafe { next.as_ref().score }))
+                .filter(|next| range.starts_after(unsafe { *next.as_ref().score() }))
             {
                 head = Some(next)
             }
@@ -289,7 +296,7 @@ impl<T, S: internal::Score> SkipList<T, S> {
         head = unsafe { head.unwrap().as_ref().levels[0].next };
         let mut removed = 0;
         while head.map_or(false, |node| {
-            !range.ends_before(unsafe { node.as_ref() }.score)
+            !range.ends_before(unsafe { *node.as_ref().score() })
         }) {
             let node = head.unwrap();
             let next = unsafe { node.as_ref().levels[0].next };
@@ -303,7 +310,7 @@ impl<T, S: internal::Score> SkipList<T, S> {
     }
 }
 
-impl<T: std::default::Default, S: std::default::Default> SkipList<T, S> {
+impl<T, S> SkipList<T, S> {
     pub fn new() -> Self {
         let head = Box::new(Node::head());
         SkipList {
@@ -360,9 +367,8 @@ impl<T: std::cmp::PartialOrd, S: std::cmp::PartialOrd + Clone + Copy> SkipList<T
         self.len += 1;
     }
 
-    pub fn delete(&mut self, elt: T, score: S) -> bool {
-        let removed = self.remove_retain(elt, score);
-        removed.is_some()
+    pub fn delete(&mut self, elt: T, score: S) -> Option<T> {
+        self.remove_retain(elt, score).map(|n| n.element.unwrap())
     }
 
     pub fn update_score(&mut self, elt: T, current_score: S, new_score: S) {
@@ -373,22 +379,22 @@ impl<T: std::cmp::PartialOrd, S: std::cmp::PartialOrd + Clone + Copy> SkipList<T
         unsafe {
             let node_ref = node.as_ptr();
             assert!(
-                current_score == (*node_ref).score && elt == (*node_ref).element,
+                current_score == *(*node_ref).score() && elt == *(*node_ref).element(),
                 "found node doesn't match"
             );
 
             if ((*node_ref).prev.is_none()
-                || (*(*node_ref).prev.unwrap().as_ptr()).score < new_score)
+                || *(*(*node_ref).prev.unwrap().as_ptr()).score() < new_score)
                 && ((*node_ref).levels[0].next.is_none()
-                    || (*(*node_ref).levels[0].next.unwrap().as_ptr()).score > new_score)
+                    || *(*(*node_ref).levels[0].next.unwrap().as_ptr()).score() > new_score)
             {
                 // new score does not require list to be re-ordered
-                (*node_ref).score = new_score;
+                (*node_ref).score = Some(new_score);
             } else {
                 // new score requires new location
                 self.delete_node(&mut search, node);
                 let old = Box::from_raw(node.as_ptr());
-                self.insert(old.element, new_score);
+                self.insert(old.element.unwrap(), new_score);
             }
         }
     }
@@ -397,7 +403,7 @@ impl<T: std::cmp::PartialOrd, S: std::cmp::PartialOrd + Clone + Copy> SkipList<T
         let mut search = self.search(&elt, score);
         if let Some(node) = search.node() {
             let node_ref = unsafe { node.as_ref() };
-            if node_ref.score == score && node_ref.element == elt {
+            if *node_ref.score() == score && *node_ref.element() == elt {
                 self.delete_node(&mut search, node);
                 return Some(unsafe { Box::from_raw(node.as_ptr()) });
             }
@@ -419,7 +425,7 @@ impl<T: std::cmp::PartialOrd, S: std::cmp::PartialOrd + Clone + Copy> SkipList<T
                 unsafe { Some(&head.unwrap().as_ref().levels[l]) }.filter(|level| {
                     level.next.map_or(false, |next| {
                         let next = unsafe { next.as_ref() };
-                        next.score < score || next.score == score && next.element < *elt
+                        *next.score() < score || *next.score() == score && *next.element() < *elt
                     })
                 })
             {
@@ -439,7 +445,7 @@ impl<T: std::cmp::PartialOrd, S: std::cmp::PartialOrd + Clone + Copy> SkipList<T
             while let Some(next) =
                 unsafe { &head.unwrap().as_ref().levels[l].next }.filter(|next| {
                     let next = unsafe { next.as_ref() };
-                    next.score < score || next.score == score && next.element < *elt
+                    *next.score() < score || *next.score() == score && *next.element() < *elt
                 })
             {
                 head = Some(next);
@@ -473,9 +479,7 @@ impl<T, S> Drop for SkipList<T, S> {
     }
 }
 
-impl<'a, T, S: Clone + Copy> Iterator
-    for Iter<'a, T, S>
-{
+impl<'a, T, S: Clone + Copy> Iterator for Iter<'a, T, S> {
     type Item = (&'a T, S);
 
     #[inline]
@@ -488,7 +492,7 @@ impl<'a, T, S: Clone + Copy> Iterator
                 let node = &*node.as_ptr();
                 self.len -= 1;
                 self.head = node.levels[0].next;
-                (&node.element, node.score)
+                (node.element(), *node.score())
             })
         }
     }
@@ -504,9 +508,7 @@ impl<'a, T, S: Clone + Copy> Iterator
     }
 }
 
-impl<'a, T, S: Clone + Copy> DoubleEndedIterator
-    for Iter<'a, T, S>
-{
+impl<'a, T, S: Clone + Copy> DoubleEndedIterator for Iter<'a, T, S> {
     #[inline]
     fn next_back(&mut self) -> Option<(&'a T, S)> {
         if self.len == 0 {
@@ -517,7 +519,7 @@ impl<'a, T, S: Clone + Copy> DoubleEndedIterator
                 let node = &*node.as_ptr();
                 self.len -= 1;
                 self.tail = node.prev;
-                (&node.element, node.score)
+                (node.element(), *node.score())
             })
         }
     }

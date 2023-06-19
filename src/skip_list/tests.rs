@@ -42,10 +42,10 @@ fn test_delete() {
         l.insert(c, c as u32);
     }
     for c in "bc".chars() {
-        assert_eq!(l.delete(c, c as u32), true);
+        assert_eq!(l.delete(c, c as u32).is_some(), true);
     }
-    assert_eq!(l.delete('a', 0), false); // won't delete if score doesn't match
-    assert_eq!(l.delete('z', 100), false); // won't delete if element doesn't match
+    assert_eq!(l.delete('a', 0).is_some(), false); // won't delete if score doesn't match
+    assert_eq!(l.delete('z', 100).is_some(), false); // won't delete if element doesn't match
 
     let l = l;
     let mut iter = l.iter();
@@ -194,7 +194,7 @@ fn test_drop() {
     l.insert(Elem(3), 3);
     l.insert(Elem(4), 4);
     drop(l);
-    assert_eq!(unsafe { DROPS }, 4 + 1); // one extra from default value in head
+    assert_eq!(unsafe { DROPS }, 4);
 }
 
 #[test]
@@ -222,7 +222,7 @@ fn test_drop_with_pop() {
     l.pop_head_node();
     assert_eq!(unsafe { DROPS }, 2);
     drop(l);
-    assert_eq!(unsafe { DROPS }, 4 + 1); // one extra from default value in head
+    assert_eq!(unsafe { DROPS }, 4);
 }
 
 #[test]
@@ -249,7 +249,7 @@ fn test_drop_with_range() {
     l.delete_range_by_score(2..=3);
     assert_eq!(unsafe { DROPS }, 2);
     drop(l);
-    assert_eq!(unsafe { DROPS }, 4 + 1); // one extra from default value in head
+    assert_eq!(unsafe { DROPS }, 4);
 }
 
 #[test]
@@ -279,5 +279,5 @@ fn test_drop_panic() {
 
     catch_unwind(move || drop(l)).ok();
 
-    assert_eq!(unsafe { DROPS }, 4 + 1); // one extra from default value in head
+    assert_eq!(unsafe { DROPS }, 4);
 }
