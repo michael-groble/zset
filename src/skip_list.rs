@@ -481,10 +481,10 @@ impl<T, S> Drop for SkipList<T, S> {
 impl<'a, T: std::default::Default + std::cmp::PartialOrd, S: Clone + Copy> Iterator
     for Iter<'a, T, S>
 {
-    type Item = (S, &'a T);
+    type Item = (&'a T, S);
 
     #[inline]
-    fn next(&mut self) -> Option<(S, &'a T)> {
+    fn next(&mut self) -> Option<(&'a T, S)> {
         if self.len == 0 {
             None
         } else {
@@ -493,7 +493,7 @@ impl<'a, T: std::default::Default + std::cmp::PartialOrd, S: Clone + Copy> Itera
                 let node = &*node.as_ptr();
                 self.len -= 1;
                 self.head = node.levels[0].next;
-                (node.score, &node.element)
+                (&node.element, node.score)
             })
         }
     }
@@ -504,7 +504,7 @@ impl<'a, T: std::default::Default + std::cmp::PartialOrd, S: Clone + Copy> Itera
     }
 
     #[inline]
-    fn last(mut self) -> Option<(S, &'a T)> {
+    fn last(mut self) -> Option<(&'a T, S)> {
         self.next_back()
     }
 }
@@ -513,7 +513,7 @@ impl<'a, T: std::default::Default + std::cmp::PartialOrd, S: Clone + Copy> Doubl
     for Iter<'a, T, S>
 {
     #[inline]
-    fn next_back(&mut self) -> Option<(S, &'a T)> {
+    fn next_back(&mut self) -> Option<(&'a T, S)> {
         if self.len == 0 {
             None
         } else {
@@ -522,7 +522,7 @@ impl<'a, T: std::default::Default + std::cmp::PartialOrd, S: Clone + Copy> Doubl
                 let node = &*node.as_ptr();
                 self.len -= 1;
                 self.tail = node.prev;
-                (node.score, &node.element)
+                (&node.element, node.score)
             })
         }
     }

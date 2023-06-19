@@ -11,11 +11,11 @@ fn test_basic() {
     let l = l;
     let mut iter = l.iter();
     assert_eq!(l.len, 5);
-    assert_eq!(iter.next(), Some((97, &'a')));
-    assert_eq!(iter.next(), Some((98, &'b')));
-    assert_eq!(iter.next(), Some((99, &'c')));
-    assert_eq!(iter.next(), Some((100, &'d')));
-    assert_eq!(iter.next(), Some((101, &'e')));
+    assert_eq!(iter.next(), Some((&'a', 97)));
+    assert_eq!(iter.next(), Some((&'b', 98)));
+    assert_eq!(iter.next(), Some((&'c', 99)));
+    assert_eq!(iter.next(), Some((&'d', 100)));
+    assert_eq!(iter.next(), Some((&'e', 101)));
     assert_eq!(iter.next(), None);
 }
 
@@ -27,11 +27,11 @@ fn test_backward() {
     }
     let l = l;
     let mut iter = l.iter();
-    assert_eq!(iter.next_back(), Some((101, &'e')));
-    assert_eq!(iter.next_back(), Some((100, &'d')));
-    assert_eq!(iter.next_back(), Some((99, &'c')));
-    assert_eq!(iter.next_back(), Some((98, &'b')));
-    assert_eq!(iter.next_back(), Some((97, &'a')));
+    assert_eq!(iter.next_back(), Some((&'e', 101)));
+    assert_eq!(iter.next_back(), Some((&'d', 100)));
+    assert_eq!(iter.next_back(), Some((&'c', 99)));
+    assert_eq!(iter.next_back(), Some((&'b', 98)));
+    assert_eq!(iter.next_back(), Some((&'a', 97)));
     assert_eq!(iter.next_back(), None);
 }
 
@@ -50,9 +50,9 @@ fn test_delete() {
     let l = l;
     let mut iter = l.iter();
     assert_eq!(l.len, 3);
-    assert_eq!(iter.next(), Some((97, &'a')));
-    assert_eq!(iter.next(), Some((100, &'d')));
-    assert_eq!(iter.next(), Some((101, &'e')));
+    assert_eq!(iter.next(), Some((&'a', 97)));
+    assert_eq!(iter.next(), Some((&'d', 100)));
+    assert_eq!(iter.next(), Some((&'e', 101)));
     assert_eq!(iter.next(), None);
 }
 
@@ -66,16 +66,16 @@ fn test_same_score_ordering() {
     l.insert('a', 3);
     let mut iter = l.iter();
     assert_eq!(l.len, 4);
-    assert_eq!(iter.next(), Some((1, &'d')));
-    assert_eq!(iter.next(), Some((2, &'b')));
-    assert_eq!(iter.next(), Some((2, &'c')));
-    assert_eq!(iter.next(), Some((3, &'a')));
+    assert_eq!(iter.next(), Some((&'d', 1)));
+    assert_eq!(iter.next(), Some((&'b', 2)));
+    assert_eq!(iter.next(), Some((&'c', 2)));
+    assert_eq!(iter.next(), Some((&'a', 3)));
     assert_eq!(iter.next(), None);
     l.delete('c', 2);
     let mut iter = l.iter();
-    assert_eq!(iter.next(), Some((1, &'d')));
-    assert_eq!(iter.next(), Some((2, &'b')));
-    assert_eq!(iter.next(), Some((3, &'a')));
+    assert_eq!(iter.next(), Some((&'d', 1)));
+    assert_eq!(iter.next(), Some((&'b', 2)));
+    assert_eq!(iter.next(), Some((&'a', 3)));
 }
 
 #[test]
@@ -103,20 +103,20 @@ fn test_update_score() {
     l.insert('a', 3.0);
     let mut iter = l.iter();
     assert_eq!(l.len, 3);
-    assert_eq!(iter.next(), Some((1.0, &'c')));
-    assert_eq!(iter.next(), Some((2.0, &'b')));
-    assert_eq!(iter.next(), Some((3.0, &'a')));
+    assert_eq!(iter.next(), Some((&'c', 1.0)));
+    assert_eq!(iter.next(), Some((&'b', 2.0)));
+    assert_eq!(iter.next(), Some((&'a', 3.0)));
     assert_eq!(iter.next(), None);
     l.update_score('b', 2.0, 2.5);
     let mut iter = l.iter();
-    assert_eq!(iter.next(), Some((1.0, &'c')));
-    assert_eq!(iter.next(), Some((2.5, &'b')));
-    assert_eq!(iter.next(), Some((3.0, &'a')));
+    assert_eq!(iter.next(), Some((&'c', 1.0)));
+    assert_eq!(iter.next(), Some((&'b', 2.5)));
+    assert_eq!(iter.next(), Some((&'a', 3.0)));
     l.update_score('b', 2.5, 3.5);
     let mut iter = l.iter();
-    assert_eq!(iter.next(), Some((1.0, &'c')));
-    assert_eq!(iter.next(), Some((3.0, &'a')));
-    assert_eq!(iter.next(), Some((3.5, &'b')));
+    assert_eq!(iter.next(), Some((&'c', 1.0)));
+    assert_eq!(iter.next(), Some((&'a', 3.0)));
+    assert_eq!(iter.next(), Some((&'b', 3.5)));
 }
 
 #[test]
@@ -128,9 +128,9 @@ fn test_update_score_boxed() {
     l.insert(Box::new('a'), 3);
     l.update_score(Box::new('b'), 2, 5);
     let mut iter = l.iter();
-    assert_eq!(iter.next(), Some((1, &Box::new('c'))));
-    assert_eq!(iter.next(), Some((3, &Box::new('a'))));
-    assert_eq!(iter.next(), Some((5, &Box::new('b'))));
+    assert_eq!(iter.next(), Some((&Box::new('c'), 1)));
+    assert_eq!(iter.next(), Some((&Box::new('a'), 3)));
+    assert_eq!(iter.next(), Some((&Box::new('b'), 5)));
 }
 
 #[test]
@@ -163,13 +163,13 @@ fn test_delete_range_by_score() {
     l.delete_range_by_score(3.0..);
     assert_eq!(l.len, 2);
     let mut iter = l.iter();
-    assert_eq!(iter.next(), Some((1.0, &'a')));
-    assert_eq!(iter.next(), Some((2.0, &'b')));
+    assert_eq!(iter.next(), Some((&'a', 1.0)));
+    assert_eq!(iter.next(), Some((&'b', 2.0)));
     assert_eq!(iter.next(), None);
     l.delete_range_by_score(..=1.0);
     assert_eq!(l.len, 1);
     let mut iter = l.iter();
-    assert_eq!(iter.next(), Some((2.0, &'b')));
+    assert_eq!(iter.next(), Some((&'b', 2.0)));
     assert_eq!(iter.next(), None);
 }
 
