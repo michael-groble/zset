@@ -225,7 +225,7 @@ impl<T, S> SkipList<T, S> {
     }
 }
 
-impl<T, S: internal::Score> SkipList<T, S> {
+impl<T, S: Score> SkipList<T, S> {
     pub fn is_in_range<R: RangeBounds<S>>(&self, range: R) -> bool {
         if range.is_empty() {
             return false;
@@ -553,7 +553,7 @@ trait ScoreRange<S> {
 
 impl<T: RangeBounds<S>, S> ScoreRange<S> for T
 where
-    S: internal::Score + PartialOrd,
+    S: Score,
 {
     fn is_empty(&self) -> bool {
         let infinity = S::INFINITY;
@@ -588,12 +588,11 @@ where
     }
 }
 
-mod internal {
-    pub trait Score: Copy + PartialOrd {
-        const INFINITY: Self;
-        const NEG_INFINITY: Self;
-    }
-    macro_rules! impl_score_float {
+pub trait Score: Copy + PartialOrd {
+    const INFINITY: Self;
+    const NEG_INFINITY: Self;
+}
+macro_rules! impl_score_float {
     ($($F:ident),*) => {
         $(
             impl Score for $F {
@@ -604,7 +603,7 @@ mod internal {
     };
 }
 
-    macro_rules! impl_score_int {
+macro_rules! impl_score_int {
     ($($F:ident),*) => {
         $(
             impl Score for $F {
@@ -615,6 +614,5 @@ mod internal {
     };
 }
 
-    impl_score_float!(f32, f64);
-    impl_score_int!(u8, u16, u32, u64, u128, i8, i16, i32, i64, i128);
-}
+impl_score_float!(f32, f64);
+impl_score_int!(u8, u16, u32, u64, u128, i8, i16, i32, i64, i128);

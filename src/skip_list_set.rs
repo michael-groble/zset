@@ -1,24 +1,23 @@
-// card
-// count
 // lexcount
 // mpop
 // mscore
 // range
 // rank
-// rem
 // remrange
 // score
 
 use crate::skip_list;
-use crate::skip_list::SkipList;
+use crate::skip_list::{Score, SkipList};
 use std::borrow::Borrow;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::marker::PhantomData;
+use std::ops::{Bound, RangeBounds};
 use std::ptr::NonNull;
 use std::{hash, mem};
 
+// try to get rid of Hash + Eq
 pub struct SkipListSet<T: ?Sized + Hash + Eq, S> {
     list: SkipList<Key<T>, S>,
     hash: HashMap<Key<T>, S>,
@@ -55,10 +54,11 @@ impl<T: ?Sized + Hash + Eq + PartialOrd> PartialOrd for Key<T> {
     }
 }
 
-impl<T: Hash + Eq + PartialOrd, S: Copy + PartialOrd> SkipListSet<T, S> {
+impl<T: Hash + Eq + PartialOrd, S: Score> SkipListSet<T, S> {
     pub fn insert(&mut self, element: T, score: S) {
         let boxed = Box::new(element);
         let leaked: NonNull<T> = Box::leak(boxed).into();
+        // need to check if already exists in hash and update score if so
         self.list.insert(
             Key {
                 value: leaked,
@@ -83,6 +83,17 @@ impl<T: Hash + Eq + PartialOrd, S: Copy + PartialOrd> SkipListSet<T, S> {
         } else {
             false
         }
+    }
+
+    pub fn count_in_range<R: RangeBounds<S> + Clone>(&self, range: R) -> usize {
+        let mut count: usize = 0;
+        if let Some((_, rank)) = self.list.first_in_range(range.clone()) {
+            count = self.len() - rank;
+            if let Some((_, rank)) = self.list.last_in_range(range) {
+                count -= self.len() - rank - 1;
+            }
+        }
+        count
     }
 }
 
@@ -122,6 +133,7 @@ impl<'a, T: ?Sized + Hash + Eq, S: Clone + Copy> Iterator for Iter<'a, T, S> {
 }
 
 impl<T: ?Sized + Hash + Eq, S> Drop for SkipListSet<T, S> {
+    // does not protect against panic.  memory could leak
     fn drop(&mut self) {
         for key in self.hash.keys() {
             drop(unsafe { Box::from_raw(key.value.as_ptr()) });
@@ -175,4 +187,26 @@ fn test_drop() {
     l.insert(Elem(4), 4);
     drop(l);
     assert_eq!(unsafe { DROPS }, 4);
+}
+
+#[test]
+fn test_count_in_range() {
+    let mut l = SkipListSet::new();
+
+    l.insert('a', 1);
+    l.insert('b', 1);
+    l.insert('c', 2);
+    l.insert('d', 2);
+    l.insert('e', 3);
+    l.insert('f', 5);
+
+    assert_eq!(l.count_in_range(..1), 0);
+    assert_eq!(l.count_in_range(..=1), 2);
+    assert_eq!(l.count_in_range(1..3), 4);
+    assert_eq!(l.count_in_range(..), 6);
+    assert_eq!(l.count_in_range(3..), 2);
+    assert_eq!(l.count_in_range(3..4), 1);
+    assert_eq!(l.count_in_range(4..5), 0);
+    assert_eq!(l.count_in_range(5..), 1);
+    assert_eq!(l.count_in_range((Bound::Excluded(5), Bound::Unbounded)), 0);
 }

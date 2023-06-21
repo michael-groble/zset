@@ -147,10 +147,10 @@ fn test_in_range() {
     assert_eq!(l.is_in_range((Bound::Excluded(3), Bound::Unbounded)), false);
 }
 
-fn first_in_range<T, S: internal::Score, R: RangeBounds<S> + Clone>(
+fn first_in_range<T, S: Score, R: RangeBounds<S> + Clone>(
     list: &SkipList<T, S>,
     range: R,
-) -> Option<((&T, usize))> {
+) -> Option<(&T, usize)> {
     list.first_in_range(range)
         .map(|(node, rank)| (unsafe { node.as_ref().element() }, rank))
 }
@@ -175,10 +175,10 @@ fn test_first_in_range() {
     );
 }
 
-fn last_in_range<T, S: internal::Score, R: RangeBounds<S> + Clone>(
+fn last_in_range<T, S: Score, R: RangeBounds<S> + Clone>(
     list: &SkipList<T, S>,
     range: R,
-) -> Option<((&T, usize))> {
+) -> Option<(&T, usize)> {
     list.last_in_range(range)
         .map(|(node, rank)| (unsafe { node.as_ref().element() }, rank))
 }
