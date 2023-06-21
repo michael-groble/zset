@@ -147,6 +147,62 @@ fn test_in_range() {
     assert_eq!(l.is_in_range((Bound::Excluded(3), Bound::Unbounded)), false);
 }
 
+fn first_in_range<T, S: internal::Score, R: RangeBounds<S> + Clone>(
+    list: &SkipList<T, S>,
+    range: R,
+) -> Option<((&T, usize))> {
+    list.first_in_range(range)
+        .map(|(node, rank)| (unsafe { node.as_ref().element() }, rank))
+}
+
+#[test]
+fn test_first_in_range() {
+    let mut l = SkipList::new();
+
+    l.insert('a', 1);
+    l.insert('b', 1);
+    l.insert('c', 2);
+    l.insert('d', 2);
+    l.insert('e', 3);
+
+    assert_eq!(first_in_range(&l, ..1), None);
+    assert_eq!(first_in_range(&l, ..=1), Some((&'a', 0)));
+    assert_eq!(first_in_range(&l, 2..), Some((&'c', 2)));
+    assert_eq!(first_in_range(&l, 3..), Some((&'e', 4)));
+    assert_eq!(
+        first_in_range(&l, (Bound::Excluded(3), Bound::Unbounded)),
+        None
+    );
+}
+
+fn last_in_range<T, S: internal::Score, R: RangeBounds<S> + Clone>(
+    list: &SkipList<T, S>,
+    range: R,
+) -> Option<((&T, usize))> {
+    list.last_in_range(range)
+        .map(|(node, rank)| (unsafe { node.as_ref().element() }, rank))
+}
+
+#[test]
+fn test_last_in_range() {
+    let mut l = SkipList::new();
+
+    l.insert('a', 1);
+    l.insert('b', 1);
+    l.insert('c', 2);
+    l.insert('d', 2);
+    l.insert('e', 3);
+
+    assert_eq!(last_in_range(&l, ..1), None);
+    assert_eq!(last_in_range(&l, ..=1), Some((&'b', 1)));
+    assert_eq!(last_in_range(&l, ..=2), Some((&'d', 3)));
+    assert_eq!(last_in_range(&l, 2..), Some((&'e', 4)));
+    assert_eq!(
+        last_in_range(&l, (Bound::Excluded(3), Bound::Unbounded)),
+        None
+    );
+}
+
 #[test]
 fn test_delete_range_by_score() {
     let mut l = SkipList::new();

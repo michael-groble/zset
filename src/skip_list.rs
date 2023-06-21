@@ -49,7 +49,7 @@ struct Level<T, S> {
     span: usize,
 }
 
-struct Node<T, S> {
+pub struct Node<T, S> {
     levels: Vec<Level<T, S>>,
     prev: NodePointer<T, S>,
     element: Option<T>, // only None in head
@@ -123,11 +123,11 @@ impl<T, S> Node<T, S> {
         }
     }
 
-    fn element(&self) -> &T {
+    pub fn element(&self) -> &T {
         self.element.as_ref().unwrap()
     }
 
-    fn score(&self) -> &S {
+    pub fn score(&self) -> &S {
         self.score.as_ref().unwrap()
     }
 }
@@ -243,40 +243,60 @@ impl<T, S: internal::Score> SkipList<T, S> {
         true
     }
 
-    fn first_in_range<R: RangeBounds<S> + Copy>(&self, range: R) -> NodePointer<T, S> {
-        if !self.is_in_range(range) {
+    pub fn first_in_range<R: RangeBounds<S> + Clone>(
+        &self,
+        range: R,
+    ) -> Option<(NonNull<Node<T, S>>, usize)> {
+        if !self.is_in_range(range.clone()) {
             return None;
         }
         let mut node = Some(self.head);
+        let mut rank: usize = 0;
 
         for l in (0..=self.highest_level).rev() {
-            while let Some(next) = unsafe { node.unwrap().as_ref().levels[l].next }
-                .filter(|next| range.starts_after(unsafe { *next.as_ref().score() }))
+            while let Some(level) =
+                unsafe { Some(&node.unwrap().as_ref().levels[l]) }.filter(|level| {
+                    level.next.map_or(false, |next| {
+                        let next = unsafe { next.as_ref() };
+                        range.starts_after(*next.score())
+                    })
+                })
             {
-                node = Some(next);
+                rank += level.span;
+                node = level.next;
             }
         }
         node = unsafe { Some((node.unwrap().as_ref()).levels[0].next.unwrap()) };
         node.filter(|&node| !range.ends_before(unsafe { *node.as_ref().score() }))
+            .map(|node| (node, rank))
     }
 
-    fn last_in_range<R: RangeBounds<S> + Copy>(&self, range: R) -> NodePointer<T, S> {
-        if !self.is_in_range(range) {
+    pub fn last_in_range<R: RangeBounds<S> + Clone>(
+        &self,
+        range: R,
+    ) -> Option<(NonNull<Node<T, S>>, usize)> {
+        if !self.is_in_range(range.clone()) {
             return None;
         }
         let mut node = self.head;
+        let mut rank: usize = 0;
 
         for l in (0..=self.highest_level).rev() {
-            while let Some(next) = unsafe { node.as_ref().levels[l].next }
-                .filter(|next| !range.ends_before(unsafe { *next.as_ref().score() }))
-            {
-                node = next;
+            while let Some(level) = unsafe { Some(&node.as_ref().levels[l]) }.filter(|level| {
+                level.next.map_or(false, |next| {
+                    let next = unsafe { next.as_ref() };
+                    !range.ends_before(*next.score())
+                })
+            }) {
+                rank += level.span;
+                node = level.next.unwrap();
             }
         }
+
         if range.starts_after(unsafe { *node.as_ref().score() }) {
             None
         } else {
-            Some(node)
+            Some((node, rank - 1))
         }
     }
 
