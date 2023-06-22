@@ -1,5 +1,5 @@
-use std::ops::Bound;
 use crate::skip_list_set::SkipListSet;
+use std::ops::Bound;
 
 #[test]
 fn test_basic() {

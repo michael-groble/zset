@@ -226,7 +226,7 @@ impl<T, S> SkipList<T, S> {
 
 impl<T, S> SkipList<T, S>
 where
-    S: PartialOrd + Copy,
+    S: PartialEq + PartialOrd,
 {
     pub fn is_in_range<R: RangeBounds<S>>(&self, range: R) -> bool {
         if range.is_empty() {
@@ -234,11 +234,11 @@ where
         }
         unsafe {
             let node = self.tail;
-            if node.is_none() || range.starts_after(*node.unwrap().as_ref().score()) {
+            if node.is_none() || range.starts_after(node.unwrap().as_ref().score()) {
                 return false;
             }
             let node = self.head.as_ref().levels[0].next;
-            if node.is_none() || range.ends_before(*node.unwrap().as_ref().score()) {
+            if node.is_none() || range.ends_before(node.unwrap().as_ref().score()) {
                 return false;
             }
         }
@@ -260,7 +260,7 @@ where
                 unsafe { Some(&node.unwrap().as_ref().levels[l]) }.filter(|level| {
                     level.next.map_or(false, |next| {
                         let next = unsafe { next.as_ref() };
-                        range.starts_after(*next.score())
+                        range.starts_after(next.score())
                     })
                 })
             {
@@ -269,7 +269,7 @@ where
             }
         }
         node = unsafe { Some((node.unwrap().as_ref()).levels[0].next.unwrap()) };
-        node.filter(|&node| !range.ends_before(unsafe { *node.as_ref().score() }))
+        node.filter(|&node| !range.ends_before(unsafe { node.as_ref().score() }))
             .map(|node| (node, rank))
     }
 
@@ -287,7 +287,7 @@ where
             while let Some(level) = unsafe { Some(&node.as_ref().levels[l]) }.filter(|level| {
                 level.next.map_or(false, |next| {
                     let next = unsafe { next.as_ref() };
-                    !range.ends_before(*next.score())
+                    !range.ends_before(next.score())
                 })
             }) {
                 rank += level.span;
@@ -295,7 +295,7 @@ where
             }
         }
 
-        if range.starts_after(unsafe { *node.as_ref().score() }) {
+        if range.starts_after(unsafe { node.as_ref().score() }) {
             None
         } else {
             Some((node, rank - 1))
@@ -308,7 +308,7 @@ where
         for l in (0..=self.highest_level).rev() {
             while let Some(next) = head
                 .and_then(|head| unsafe { head.as_ref().levels[l].next })
-                .filter(|next| range.starts_after(unsafe { *next.as_ref().score() }))
+                .filter(|next| range.starts_after(unsafe { next.as_ref().score() }))
             {
                 head = Some(next)
             }
@@ -318,7 +318,7 @@ where
         head = unsafe { head.unwrap().as_ref().levels[0].next };
         let mut removed = 0;
         while head.map_or(false, |node| {
-            !range.ends_before(unsafe { *node.as_ref().score() })
+            !range.ends_before(unsafe { node.as_ref().score() })
         }) {
             let node = head.unwrap();
             let next = unsafe { node.as_ref().levels[0].next };
@@ -547,15 +547,15 @@ impl<'a, T, S: Clone + Copy> DoubleEndedIterator for Iter<'a, T, S> {
     }
 }
 
-trait ScoreRange<S> {
+trait Ranged<V> {
     fn is_empty(&self) -> bool;
-    fn starts_after(&self, score: S) -> bool;
-    fn ends_before(&self, score: S) -> bool;
+    fn starts_after(&self, value: &V) -> bool;
+    fn ends_before(&self, value: &V) -> bool;
 }
 
-impl<T: RangeBounds<S>, S> ScoreRange<S> for T
+impl<T: RangeBounds<V>, V> Ranged<V> for T
 where
-    S: PartialEq + PartialOrd,
+    V: PartialEq + PartialOrd,
 {
     fn is_empty(&self) -> bool {
         if Bound::Unbounded == self.start_bound() || Bound::Unbounded == self.end_bound() {
@@ -575,18 +575,18 @@ where
         }
     }
 
-    fn starts_after(&self, score: S) -> bool {
+    fn starts_after(&self, value: &V) -> bool {
         match self.start_bound() {
-            Bound::Included(start) => start > &score,
-            Bound::Excluded(start) => start >= &score,
+            Bound::Included(start) => start > value,
+            Bound::Excluded(start) => start >= value,
             Bound::Unbounded => false,
         }
     }
 
-    fn ends_before(&self, score: S) -> bool {
+    fn ends_before(&self, value: &V) -> bool {
         match self.end_bound() {
-            Bound::Included(end) => end < &score,
-            Bound::Excluded(end) => end <= &score,
+            Bound::Included(end) => end < value,
+            Bound::Excluded(end) => end <= value,
             Bound::Unbounded => false,
         }
     }

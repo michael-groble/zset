@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use std::hash;
 use std::hash::Hash;
 use std::marker::PhantomData;
-use std::ops::{RangeBounds};
+use std::ops::RangeBounds;
 use std::ptr::NonNull;
 
 use crate::skip_list;
