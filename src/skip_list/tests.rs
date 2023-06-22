@@ -147,7 +147,7 @@ fn test_in_range() {
     assert_eq!(l.is_in_range((Bound::Excluded(3), Bound::Unbounded)), false);
 }
 
-fn first_in_range<T, S: Score, R: RangeBounds<S> + Clone>(
+fn first_in_range<T, S: PartialOrd + Copy, R: RangeBounds<S> + Clone>(
     list: &SkipList<T, S>,
     range: R,
 ) -> Option<(&T, usize)> {
@@ -175,7 +175,7 @@ fn test_first_in_range() {
     );
 }
 
-fn last_in_range<T, S: Score, R: RangeBounds<S> + Clone>(
+fn last_in_range<T, S: PartialOrd + Copy, R: RangeBounds<S> + Clone>(
     list: &SkipList<T, S>,
     range: R,
 ) -> Option<(&T, usize)> {

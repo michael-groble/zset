@@ -1,12 +1,11 @@
-use rand::{Rng, SeedableRng};
 use std::cell::RefCell;
-use std::collections::Bound;
 use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
-use std::ops::Bound::{Excluded, Included, Unbounded};
-use std::ops::RangeBounds;
+use std::mem;
+use std::ops::{Bound, RangeBounds};
 use std::ptr::NonNull;
-use std::{cmp, mem};
+
+use rand::{Rng, SeedableRng};
 
 #[cfg(test)]
 mod tests;
@@ -225,7 +224,10 @@ impl<T, S> SkipList<T, S> {
     }
 }
 
-impl<T, S: Score> SkipList<T, S> {
+impl<T, S> SkipList<T, S>
+where
+    S: PartialOrd + Copy,
+{
     pub fn is_in_range<R: RangeBounds<S>>(&self, range: R) -> bool {
         if range.is_empty() {
             return false;
@@ -553,66 +555,39 @@ trait ScoreRange<S> {
 
 impl<T: RangeBounds<S>, S> ScoreRange<S> for T
 where
-    S: Score,
+    S: PartialEq + PartialOrd,
 {
     fn is_empty(&self) -> bool {
-        let infinity = S::INFINITY;
-        let neg_infinity = S::NEG_INFINITY;
-        let (min, minex) = match self.start_bound() {
-            Included(start) => (start, false),
-            Excluded(start) => (start, true),
-            Unbounded => (&neg_infinity, false),
-        };
-        let (max, maxex) = match self.end_bound() {
-            Included(end) => (end, false),
-            Excluded(end) => (end, true),
-            Unbounded => (&infinity, false),
-        };
-        (min > max) || (min == max && (minex || maxex))
+        if Bound::Unbounded == self.start_bound() || Bound::Unbounded == self.end_bound() {
+            false
+        } else {
+            let (min, minex) = match self.start_bound() {
+                Bound::Included(start) => (start, false),
+                Bound::Excluded(start) => (start, true),
+                Bound::Unbounded => panic!(),
+            };
+            let (max, maxex) = match self.end_bound() {
+                Bound::Included(end) => (end, false),
+                Bound::Excluded(end) => (end, true),
+                Bound::Unbounded => panic!(),
+            };
+            (min > max) || (min == max && (minex || maxex))
+        }
     }
 
     fn starts_after(&self, score: S) -> bool {
         match self.start_bound() {
-            Included(start) => start > &score,
-            Excluded(start) => start >= &score,
-            Unbounded => false,
+            Bound::Included(start) => start > &score,
+            Bound::Excluded(start) => start >= &score,
+            Bound::Unbounded => false,
         }
     }
 
     fn ends_before(&self, score: S) -> bool {
         match self.end_bound() {
-            Included(end) => end < &score,
-            Excluded(end) => end <= &score,
-            Unbounded => false,
+            Bound::Included(end) => end < &score,
+            Bound::Excluded(end) => end <= &score,
+            Bound::Unbounded => false,
         }
     }
 }
-
-pub trait Score: Copy + PartialOrd {
-    const INFINITY: Self;
-    const NEG_INFINITY: Self;
-}
-macro_rules! impl_score_float {
-    ($($F:ident),*) => {
-        $(
-            impl Score for $F {
-                const INFINITY: Self = <Self>::INFINITY;
-                const NEG_INFINITY: Self = <Self>::NEG_INFINITY;
-            }
-        )*
-    };
-}
-
-macro_rules! impl_score_int {
-    ($($F:ident),*) => {
-        $(
-            impl Score for $F {
-                const INFINITY: Self = <Self>::MAX;
-                const NEG_INFINITY: Self = <Self>::MIN;
-            }
-        )*
-    };
-}
-
-impl_score_float!(f32, f64);
-impl_score_int!(u8, u16, u32, u64, u128, i8, i16, i32, i64, i128);
