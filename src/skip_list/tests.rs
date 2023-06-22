@@ -230,6 +230,107 @@ fn test_delete_range_by_score() {
 }
 
 #[test]
+fn test_in_lexrange() {
+    let mut l = SkipList::new();
+
+    l.insert('c', 1);
+    l.insert('f', 1);
+
+    assert_eq!(l.is_in_lexrange(..'c'), false);
+    assert_eq!(l.is_in_lexrange(..='c'), true);
+    assert_eq!(l.is_in_lexrange('e'..'g'), true);
+    assert_eq!(l.is_in_lexrange('f'..), true);
+    assert_eq!(
+        l.is_in_lexrange((Bound::Excluded('f'), Bound::Unbounded)),
+        false
+    );
+}
+
+fn first_in_lexrange<T: PartialOrd, S, R: RangeBounds<T> + Clone>(
+    list: &SkipList<T, S>,
+    range: R,
+) -> Option<(&T, usize)> {
+    list.first_in_lexrange(range)
+        .map(|(node, rank)| (unsafe { node.as_ref().element() }, rank))
+}
+
+#[test]
+fn test_first_in_lexrange() {
+    let mut l = SkipList::new();
+
+    l.insert('a', 1);
+    l.insert('b', 1);
+    l.insert('c', 1);
+    l.insert('d', 1);
+    l.insert('e', 1);
+
+    assert_eq!(first_in_lexrange(&l, ..'a'), None);
+    assert_eq!(first_in_lexrange(&l, ..='a'), Some((&'a', 0)));
+    assert_eq!(first_in_lexrange(&l, 'c'..), Some((&'c', 2)));
+    assert_eq!(first_in_lexrange(&l, 'e'..), Some((&'e', 4)));
+    assert_eq!(
+        first_in_lexrange(&l, (Bound::Excluded('e'), Bound::Unbounded)),
+        None
+    );
+}
+
+fn last_in_lexrange<T: PartialOrd, S, R: RangeBounds<T> + Clone>(
+    list: &SkipList<T, S>,
+    range: R,
+) -> Option<(&T, usize)> {
+    list.last_in_lexrange(range)
+        .map(|(node, rank)| (unsafe { node.as_ref().element() }, rank))
+}
+
+#[test]
+fn test_last_in_lexrange() {
+    let mut l = SkipList::new();
+
+    l.insert('a', 1);
+    l.insert('b', 1);
+    l.insert('c', 1);
+    l.insert('d', 1);
+    l.insert('e', 1);
+
+    assert_eq!(last_in_lexrange(&l, ..'a'), None);
+    assert_eq!(last_in_lexrange(&l, ..='a'), Some((&'a', 0)));
+    assert_eq!(last_in_lexrange(&l, ..='d'), Some((&'d', 3)));
+    assert_eq!(last_in_lexrange(&l, 'e'..), Some((&'e', 4)));
+    assert_eq!(
+        last_in_lexrange(&l, (Bound::Excluded('e'), Bound::Unbounded)),
+        None
+    );
+}
+
+#[test]
+fn test_delete_range_by_lex() {
+    let mut l = SkipList::new();
+
+    l.insert('e', 1);
+    l.insert('f', 1);
+    l.insert('g', 1);
+    l.insert('j', 1);
+    l.insert('k', 1);
+
+    l.delete_range_by_lex('a'..'e');
+    assert_eq!(l.len, 5);
+    l.delete_range_by_lex('h'..'j');
+    assert_eq!(l.len, 5);
+    l.delete_range_by_lex('i'..);
+    assert_eq!(l.len, 3);
+    let mut iter = l.iter();
+    assert_eq!(iter.next(), Some((&'e', 1)));
+    assert_eq!(iter.next(), Some((&'f', 1)));
+    assert_eq!(iter.next(), Some((&'g', 1)));
+    assert_eq!(iter.next(), None);
+    l.delete_range_by_lex(..='f');
+    assert_eq!(l.len, 1);
+    let mut iter = l.iter();
+    assert_eq!(iter.next(), Some((&'g', 1)));
+    assert_eq!(iter.next(), None);
+}
+
+#[test]
 fn test_drop() {
     static mut DROPS: i32 = 0;
 

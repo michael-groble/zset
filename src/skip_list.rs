@@ -332,6 +332,118 @@ where
     }
 }
 
+impl<T, S> SkipList<T, S>
+where
+    T: PartialEq + PartialOrd,
+{
+    /// undefined behavior if scores are not all identical
+    pub fn is_in_lexrange<R: RangeBounds<T>>(&self, range: R) -> bool {
+        if range.is_empty() {
+            return false;
+        }
+        unsafe {
+            let node = self.tail;
+            if node.is_none() || range.starts_after(node.unwrap().as_ref().element()) {
+                return false;
+            }
+            let node = self.head.as_ref().levels[0].next;
+            if node.is_none() || range.ends_before(node.unwrap().as_ref().element()) {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// undefined behavior if scores are not all identical
+    pub fn first_in_lexrange<R: RangeBounds<T> + Clone>(
+        &self,
+        range: R,
+    ) -> Option<(NonNull<Node<T, S>>, usize)> {
+        if !self.is_in_lexrange(range.clone()) {
+            return None;
+        }
+        let mut node = Some(self.head);
+        let mut rank: usize = 0;
+
+        for l in (0..=self.highest_level).rev() {
+            while let Some(level) =
+                unsafe { Some(&node.unwrap().as_ref().levels[l]) }.filter(|level| {
+                    level.next.map_or(false, |next| {
+                        let next = unsafe { next.as_ref() };
+                        range.starts_after(next.element())
+                    })
+                })
+            {
+                rank += level.span;
+                node = level.next;
+            }
+        }
+        node = unsafe { Some((node.unwrap().as_ref()).levels[0].next.unwrap()) };
+        node.filter(|&node| !range.ends_before(unsafe { node.as_ref().element() }))
+            .map(|node| (node, rank))
+    }
+
+    /// undefined behavior if scores are not all identical
+    pub fn last_in_lexrange<R: RangeBounds<T> + Clone>(
+        &self,
+        range: R,
+    ) -> Option<(NonNull<Node<T, S>>, usize)> {
+        if !self.is_in_lexrange(range.clone()) {
+            return None;
+        }
+        let mut node = self.head;
+        let mut rank: usize = 0;
+
+        for l in (0..=self.highest_level).rev() {
+            while let Some(level) = unsafe { Some(&node.as_ref().levels[l]) }.filter(|level| {
+                level.next.map_or(false, |next| {
+                    let next = unsafe { next.as_ref() };
+                    !range.ends_before(next.element())
+                })
+            }) {
+                rank += level.span;
+                node = level.next.unwrap();
+            }
+        }
+
+        if range.starts_after(unsafe { node.as_ref().element() }) {
+            None
+        } else {
+            Some((node, rank - 1))
+        }
+    }
+
+    /// undefined behavior if scores are not all identical
+    pub fn delete_range_by_lex<R: RangeBounds<T>>(&mut self, range: R) -> usize {
+        let mut update: [NodePointer<T, S>; MAX_LEVELS] = [None; MAX_LEVELS];
+        let mut head: NodePointer<T, S> = Some(self.head);
+        for l in (0..=self.highest_level).rev() {
+            while let Some(next) = head
+                .and_then(|head| unsafe { head.as_ref().levels[l].next })
+                .filter(|next| range.starts_after(unsafe { next.as_ref().element() }))
+            {
+                head = Some(next)
+            }
+
+            update[l] = head;
+        }
+        head = unsafe { head.unwrap().as_ref().levels[0].next };
+        let mut removed = 0;
+        while head.map_or(false, |node| {
+            !range.ends_before(unsafe { node.as_ref().element() })
+        }) {
+            let node = head.unwrap();
+            let next = unsafe { node.as_ref().levels[0].next };
+            let mut search = Search { update, head };
+            self.delete_node(&mut search, node);
+            unsafe { Box::from_raw(node.as_ptr()) };
+            removed += 1;
+            head = next;
+        }
+        removed
+    }
+}
+
 impl<T, S> SkipList<T, S> {
     pub fn new() -> Self {
         let head = Box::new(Node::head());
