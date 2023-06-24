@@ -1,5 +1,4 @@
 use super::*;
-use std::cmp::Ordering;
 use std::panic::catch_unwind;
 
 #[test]

@@ -70,3 +70,28 @@ fn test_count_in_range() {
     assert_eq!(l.count_in_range(5..), 1);
     assert_eq!(l.count_in_range((Bound::Excluded(5), Bound::Unbounded)), 0);
 }
+
+#[test]
+fn test_count_in_lexrange() {
+    let mut l = SkipListSet::new();
+
+    l.insert('a', 0);
+    l.insert('b', 0);
+    l.insert('c', 0);
+    l.insert('d', 0);
+    l.insert('g', 0);
+    l.insert('h', 0);
+
+    assert_eq!(l.count_in_lexrange(..'a'), 0);
+    assert_eq!(l.count_in_lexrange(..='a'), 1);
+    assert_eq!(l.count_in_lexrange('a'..'e'), 4);
+    assert_eq!(l.count_in_lexrange(..), 6);
+    assert_eq!(l.count_in_lexrange('e'..), 2);
+    assert_eq!(l.count_in_lexrange('e'..'h'), 1);
+    assert_eq!(l.count_in_lexrange('e'..'g'), 0);
+    assert_eq!(l.count_in_lexrange('h'..), 1);
+    assert_eq!(
+        l.count_in_lexrange((Bound::Excluded('h'), Bound::<char>::Unbounded)),
+        0
+    );
+}

@@ -1,4 +1,3 @@
-// lexcount
 // mpop
 // mscore
 // range
@@ -12,7 +11,7 @@ use std::collections::HashMap;
 use std::hash;
 use std::hash::Hash;
 use std::marker::PhantomData;
-use std::ops::RangeBounds;
+use std::ops::{RangeBounds};
 use std::ptr::NonNull;
 
 use crate::skip_list;
@@ -27,7 +26,7 @@ pub struct SkipListSet<T: ?Sized + Hash + Eq, S> {
     hash: HashMap<Key<T>, S>,
 }
 
-struct Key<T: ?Sized + Hash + Eq> {
+pub struct Key<T: ?Sized + Hash + Eq> {
     value: NonNull<T>,
     marker: PhantomData<NonNull<T>>,
 }
@@ -94,6 +93,23 @@ impl<T: Hash + Eq + PartialOrd, S: PartialOrd + Copy> SkipListSet<T, S> {
         if let Some((_, rank)) = self.list.first_in_range(range.clone()) {
             count = self.len() - rank;
             if let Some((_, rank)) = self.list.last_in_range(range) {
+                count -= self.len() - rank - 1;
+            }
+        }
+        count
+    }
+
+    /// undefined behavior if scores are not all identical
+    pub fn count_in_lexrange<R: RangeBounds<K> + Clone, K>(&self, range: R) -> usize
+    where
+        T: Borrow<K>,
+        K: PartialOrd,
+        Key<T>: Borrow<K>,
+    {
+        let mut count: usize = 0;
+        if let Some((_, rank)) = self.list.first_in_lexrange(range.clone()) {
+            count = self.len() - rank;
+            if let Some((_, rank)) = self.list.last_in_lexrange(range) {
                 count -= self.len() - rank - 1;
             }
         }

@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use std::cell::RefCell;
 use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
@@ -228,27 +229,35 @@ impl<T, S> SkipList<T, S>
 where
     S: PartialEq + PartialOrd,
 {
-    pub fn is_in_range<R: RangeBounds<S>>(&self, range: R) -> bool {
-        if range.is_empty() {
+    pub fn is_in_range<R: RangeBounds<Q>, Q>(&self, range: R) -> bool
+    where
+        Q: PartialOrd,
+        S: Borrow<Q>,
+    {
+        if range_is_empty(&range) {
             return false;
         }
         unsafe {
             let node = self.tail;
-            if node.is_none() || range.starts_after(node.unwrap().as_ref().score()) {
+            if node.is_none() || range_starts_after(&range, node.unwrap().as_ref().score()) {
                 return false;
             }
             let node = self.head.as_ref().levels[0].next;
-            if node.is_none() || range.ends_before(node.unwrap().as_ref().score()) {
+            if node.is_none() || range_ends_before(&range, node.unwrap().as_ref().score()) {
                 return false;
             }
         }
         true
     }
 
-    pub fn first_in_range<R: RangeBounds<S> + Clone>(
+    pub fn first_in_range<R: RangeBounds<Q> + Clone, Q>(
         &self,
         range: R,
-    ) -> Option<(NonNull<Node<T, S>>, usize)> {
+    ) -> Option<(NonNull<Node<T, S>>, usize)>
+    where
+        Q: PartialOrd,
+        S: Borrow<Q>,
+    {
         if !self.is_in_range(range.clone()) {
             return None;
         }
@@ -260,7 +269,7 @@ where
                 unsafe { Some(&node.unwrap().as_ref().levels[l]) }.filter(|level| {
                     level.next.map_or(false, |next| {
                         let next = unsafe { next.as_ref() };
-                        range.starts_after(next.score())
+                        range_starts_after(&range, next.score())
                     })
                 })
             {
@@ -269,14 +278,18 @@ where
             }
         }
         node = unsafe { Some((node.unwrap().as_ref()).levels[0].next.unwrap()) };
-        node.filter(|&node| !range.ends_before(unsafe { node.as_ref().score() }))
+        node.filter(|&node| !range_ends_before(&range, unsafe { node.as_ref().score() }))
             .map(|node| (node, rank))
     }
 
-    pub fn last_in_range<R: RangeBounds<S> + Clone>(
+    pub fn last_in_range<R: RangeBounds<Q> + Clone, Q>(
         &self,
         range: R,
-    ) -> Option<(NonNull<Node<T, S>>, usize)> {
+    ) -> Option<(NonNull<Node<T, S>>, usize)>
+    where
+        Q: PartialOrd,
+        S: Borrow<Q>,
+    {
         if !self.is_in_range(range.clone()) {
             return None;
         }
@@ -287,7 +300,7 @@ where
             while let Some(level) = unsafe { Some(&node.as_ref().levels[l]) }.filter(|level| {
                 level.next.map_or(false, |next| {
                     let next = unsafe { next.as_ref() };
-                    !range.ends_before(next.score())
+                    !range_ends_before(&range, next.score())
                 })
             }) {
                 rank += level.span;
@@ -295,20 +308,24 @@ where
             }
         }
 
-        if range.starts_after(unsafe { node.as_ref().score() }) {
+        if range_starts_after(&range, unsafe { node.as_ref().score() }) {
             None
         } else {
             Some((node, rank - 1))
         }
     }
 
-    pub fn delete_range_by_score<R: RangeBounds<S>>(&mut self, range: R) -> usize {
+    pub fn delete_range_by_score<R: RangeBounds<Q>, Q>(&mut self, range: R) -> usize
+    where
+        Q: PartialOrd,
+        S: Borrow<Q>,
+    {
         let mut update: [NodePointer<T, S>; MAX_LEVELS] = [None; MAX_LEVELS];
         let mut head: NodePointer<T, S> = Some(self.head);
         for l in (0..=self.highest_level).rev() {
             while let Some(next) = head
                 .and_then(|head| unsafe { head.as_ref().levels[l].next })
-                .filter(|next| range.starts_after(unsafe { next.as_ref().score() }))
+                .filter(|next| range_starts_after(&range, unsafe { next.as_ref().score() }))
             {
                 head = Some(next)
             }
@@ -318,7 +335,7 @@ where
         head = unsafe { head.unwrap().as_ref().levels[0].next };
         let mut removed = 0;
         while head.map_or(false, |node| {
-            !range.ends_before(unsafe { node.as_ref().score() })
+            !range_ends_before(&range, unsafe { node.as_ref().score() })
         }) {
             let node = head.unwrap();
             let next = unsafe { node.as_ref().levels[0].next };
@@ -337,17 +354,21 @@ where
     T: PartialEq + PartialOrd,
 {
     /// undefined behavior if scores are not all identical
-    pub fn is_in_lexrange<R: RangeBounds<T>>(&self, range: R) -> bool {
-        if range.is_empty() {
+    pub fn is_in_lexrange<R: RangeBounds<K>, K>(&self, range: R) -> bool
+    where
+        T: Borrow<K>,
+        K: PartialOrd,
+    {
+        if range_is_empty(&range) {
             return false;
         }
         unsafe {
             let node = self.tail;
-            if node.is_none() || range.starts_after(node.unwrap().as_ref().element()) {
+            if node.is_none() || range_starts_after(&range, node.unwrap().as_ref().element()) {
                 return false;
             }
             let node = self.head.as_ref().levels[0].next;
-            if node.is_none() || range.ends_before(node.unwrap().as_ref().element()) {
+            if node.is_none() || range_ends_before(&range, node.unwrap().as_ref().element()) {
                 return false;
             }
         }
@@ -355,10 +376,14 @@ where
     }
 
     /// undefined behavior if scores are not all identical
-    pub fn first_in_lexrange<R: RangeBounds<T> + Clone>(
+    pub fn first_in_lexrange<R: RangeBounds<K> + Clone, K>(
         &self,
         range: R,
-    ) -> Option<(NonNull<Node<T, S>>, usize)> {
+    ) -> Option<(NonNull<Node<T, S>>, usize)>
+    where
+        T: Borrow<K>,
+        K: PartialOrd,
+    {
         if !self.is_in_lexrange(range.clone()) {
             return None;
         }
@@ -370,7 +395,7 @@ where
                 unsafe { Some(&node.unwrap().as_ref().levels[l]) }.filter(|level| {
                     level.next.map_or(false, |next| {
                         let next = unsafe { next.as_ref() };
-                        range.starts_after(next.element())
+                        range_starts_after(&range, next.element())
                     })
                 })
             {
@@ -379,15 +404,19 @@ where
             }
         }
         node = unsafe { Some((node.unwrap().as_ref()).levels[0].next.unwrap()) };
-        node.filter(|&node| !range.ends_before(unsafe { node.as_ref().element() }))
+        node.filter(|&node| !range_ends_before(&range, unsafe { node.as_ref().element() }))
             .map(|node| (node, rank))
     }
 
     /// undefined behavior if scores are not all identical
-    pub fn last_in_lexrange<R: RangeBounds<T> + Clone>(
+    pub fn last_in_lexrange<R: RangeBounds<K> + Clone, K>(
         &self,
         range: R,
-    ) -> Option<(NonNull<Node<T, S>>, usize)> {
+    ) -> Option<(NonNull<Node<T, S>>, usize)>
+    where
+        T: Borrow<K>,
+        K: PartialOrd,
+    {
         if !self.is_in_lexrange(range.clone()) {
             return None;
         }
@@ -398,7 +427,7 @@ where
             while let Some(level) = unsafe { Some(&node.as_ref().levels[l]) }.filter(|level| {
                 level.next.map_or(false, |next| {
                     let next = unsafe { next.as_ref() };
-                    !range.ends_before(next.element())
+                    !range_ends_before(&range, next.element())
                 })
             }) {
                 rank += level.span;
@@ -406,7 +435,7 @@ where
             }
         }
 
-        if range.starts_after(unsafe { node.as_ref().element() }) {
+        if range_starts_after(&range, unsafe { node.as_ref().element() }) {
             None
         } else {
             Some((node, rank - 1))
@@ -414,13 +443,17 @@ where
     }
 
     /// undefined behavior if scores are not all identical
-    pub fn delete_range_by_lex<R: RangeBounds<T>>(&mut self, range: R) -> usize {
+    pub fn delete_range_by_lex<R: RangeBounds<K>, K>(&mut self, range: R) -> usize
+    where
+        T: Borrow<K>,
+        K: PartialOrd,
+    {
         let mut update: [NodePointer<T, S>; MAX_LEVELS] = [None; MAX_LEVELS];
         let mut head: NodePointer<T, S> = Some(self.head);
         for l in (0..=self.highest_level).rev() {
             while let Some(next) = head
                 .and_then(|head| unsafe { head.as_ref().levels[l].next })
-                .filter(|next| range.starts_after(unsafe { next.as_ref().element() }))
+                .filter(|next| range_starts_after(&range, unsafe { next.as_ref().element() }))
             {
                 head = Some(next)
             }
@@ -430,7 +463,7 @@ where
         head = unsafe { head.unwrap().as_ref().levels[0].next };
         let mut removed = 0;
         while head.map_or(false, |node| {
-            !range.ends_before(unsafe { node.as_ref().element() })
+            !range_ends_before(&range, unsafe { node.as_ref().element() })
         }) {
             let node = head.unwrap();
             let next = unsafe { node.as_ref().levels[0].next };
@@ -659,47 +692,42 @@ impl<'a, T, S: Clone + Copy> DoubleEndedIterator for Iter<'a, T, S> {
     }
 }
 
-trait Ranged<V> {
-    fn is_empty(&self) -> bool;
-    fn starts_after(&self, value: &V) -> bool;
-    fn ends_before(&self, value: &V) -> bool;
+fn range_ends_before<R: RangeBounds<T>, T: PartialOrd, Q: Borrow<T>>(range: &R, value: &Q) -> bool {
+    match range.end_bound() {
+        Bound::Included(end) => end < value.borrow(),
+        Bound::Excluded(end) => end <= value.borrow(),
+        Bound::Unbounded => false,
+    }
 }
 
-impl<T: RangeBounds<V>, V> Ranged<V> for T
+fn range_starts_after<R: RangeBounds<T>, T: PartialOrd, Q: Borrow<T>>(
+    range: &R,
+    value: &Q,
+) -> bool {
+    match range.start_bound() {
+        Bound::Included(start) => start > value.borrow(),
+        Bound::Excluded(start) => start >= value.borrow(),
+        Bound::Unbounded => false,
+    }
+}
+
+fn range_is_empty<R: RangeBounds<T>, T>(range: &R) -> bool
 where
-    V: PartialEq + PartialOrd,
+    T: PartialEq + PartialOrd,
 {
-    fn is_empty(&self) -> bool {
-        if Bound::Unbounded == self.start_bound() || Bound::Unbounded == self.end_bound() {
-            false
-        } else {
-            let (min, minex) = match self.start_bound() {
-                Bound::Included(start) => (start, false),
-                Bound::Excluded(start) => (start, true),
-                Bound::Unbounded => panic!(),
-            };
-            let (max, maxex) = match self.end_bound() {
-                Bound::Included(end) => (end, false),
-                Bound::Excluded(end) => (end, true),
-                Bound::Unbounded => panic!(),
-            };
-            (min > max) || (min == max && (minex || maxex))
-        }
-    }
-
-    fn starts_after(&self, value: &V) -> bool {
-        match self.start_bound() {
-            Bound::Included(start) => start > value,
-            Bound::Excluded(start) => start >= value,
-            Bound::Unbounded => false,
-        }
-    }
-
-    fn ends_before(&self, value: &V) -> bool {
-        match self.end_bound() {
-            Bound::Included(end) => end < value,
-            Bound::Excluded(end) => end <= value,
-            Bound::Unbounded => false,
-        }
+    if Bound::Unbounded == range.start_bound() || Bound::Unbounded == range.end_bound() {
+        false
+    } else {
+        let (min, minex) = match range.start_bound() {
+            Bound::Included(start) => (start, false),
+            Bound::Excluded(start) => (start, true),
+            Bound::Unbounded => panic!(),
+        };
+        let (max, maxex) = match range.end_bound() {
+            Bound::Included(end) => (end, false),
+            Bound::Excluded(end) => (end, true),
+            Bound::Unbounded => panic!(),
+        };
+        (min > max) || (min == max && (minex || maxex))
     }
 }
