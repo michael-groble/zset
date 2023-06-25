@@ -95,3 +95,45 @@ fn test_count_in_lexrange() {
         0
     );
 }
+
+#[test]
+fn test_get() {
+    let mut l = SkipListSet::new();
+
+    l.insert('a', 1);
+    l.insert('b', 2);
+    l.insert('c', 3);
+
+    assert_eq!(l.get(&'a'), Some(&1));
+    assert_eq!(l.get(&'b'), Some(&2));
+    assert_eq!(l.get(&'c'), Some(&3));
+    assert_eq!(l.get(&'d'), None);
+}
+
+#[test]
+fn test_rank() {
+    let mut l = SkipListSet::new();
+
+    l.insert('a', 1);
+    l.insert('b', 2);
+    l.insert('c', 3);
+
+    assert_eq!(l.rank(&'a'), Some((0, &1)));
+    assert_eq!(l.rank(&'b'), Some((1, &2)));
+    assert_eq!(l.rank(&'c'), Some((2, &3)));
+    assert_eq!(l.rank(&'d'), None);
+}
+
+#[test]
+fn test_reverse_rank() {
+    let mut l = SkipListSet::new();
+
+    l.insert('a', 1);
+    l.insert('b', 2);
+    l.insert('c', 3);
+
+    assert_eq!(l.reverse_rank(&'a'), Some((2, &1)));
+    assert_eq!(l.reverse_rank(&'b'), Some((1, &2)));
+    assert_eq!(l.reverse_rank(&'c'), Some((0, &3)));
+    assert_eq!(l.reverse_rank(&'d'), None);
+}

@@ -330,10 +330,25 @@ fn test_delete_range_by_lex() {
 }
 
 #[test]
+fn test_rank() {
+    let mut l = SkipList::new();
+
+    l.insert('a', 1);
+    l.insert('b', 2);
+    l.insert('c', 3);
+
+    assert_eq!(l.rank(&'a', 1), Some(0));
+    assert_eq!(l.rank(&'b', 2), Some(1));
+    assert_eq!(l.rank(&'c', 3), Some(2));
+    assert_eq!(l.rank(&'c', 2), None);
+    assert_eq!(l.rank(&'d', 3), None);
+}
+
+#[test]
 fn test_drop() {
     static mut DROPS: i32 = 0;
 
-    #[derive(Default, PartialEq, PartialOrd)]
+    #[derive(Default, PartialEq, PartialOrd, Debug)]
     struct Elem(i32);
 
     impl Drop for Elem {
@@ -357,7 +372,7 @@ fn test_drop() {
 fn test_drop_with_pop() {
     static mut DROPS: i32 = 0;
 
-    #[derive(Default, PartialEq, PartialOrd)]
+    #[derive(Default, PartialEq, PartialOrd, Debug)]
     struct Elem(i32);
 
     impl Drop for Elem {
@@ -385,7 +400,7 @@ fn test_drop_with_pop() {
 fn test_drop_with_range() {
     static mut DROPS: i32 = 0;
 
-    #[derive(Default, PartialEq, PartialOrd)]
+    #[derive(Default, PartialEq, PartialOrd, Debug)]
     struct Elem(i32);
 
     impl Drop for Elem {
@@ -412,7 +427,7 @@ fn test_drop_with_range() {
 fn test_drop_panic() {
     static mut DROPS: i32 = 0;
 
-    #[derive(Default, PartialEq, PartialOrd)]
+    #[derive(Default, PartialEq, PartialOrd, Debug)]
     struct Elem(i32);
 
     impl Drop for Elem {

@@ -1,9 +1,6 @@
 // mpop
-// mscore
 // range
-// rank
 // remrange
-// score
 
 use std::borrow::Borrow;
 use std::cmp::Ordering;
@@ -11,7 +8,7 @@ use std::collections::HashMap;
 use std::hash;
 use std::hash::Hash;
 use std::marker::PhantomData;
-use std::ops::{RangeBounds};
+use std::ops::RangeBounds;
 use std::ptr::NonNull;
 
 use crate::skip_list;
@@ -115,9 +112,24 @@ impl<T: Hash + Eq + PartialOrd, S: PartialOrd + Copy> SkipListSet<T, S> {
         }
         count
     }
+
+    pub fn get(&self, element: &T) -> Option<&S> {
+        self.hash.get(element)
+    }
+
+    pub fn rank(&self, element: &T) -> Option<(usize, &S)> {
+        self.hash
+            .get_key_value(element)
+            .and_then(|(elt, score)| self.list.rank(elt, *score).map(|rank| (rank, score)))
+    }
+
+    pub fn reverse_rank(&self, element: &T) -> Option<(usize, &S)> {
+        self.rank(element)
+            .map(|(rank, score)| (self.len() - 1 - rank, score))
+    }
 }
 
-impl<T: ?Sized + Hash + Eq + Default, S: Default> SkipListSet<T, S> {
+impl<T: ?Sized + Hash + Eq, S> SkipListSet<T, S> {
     pub fn new() -> Self {
         SkipListSet {
             list: SkipList::new(),
@@ -134,6 +146,12 @@ impl<T: ?Sized + Hash + Eq, S> SkipListSet<T, S> {
         Iter {
             iter: self.list.iter(),
         }
+    }
+}
+
+impl<T: ?Sized + Hash + Eq, S> Default for SkipListSet<T, S> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

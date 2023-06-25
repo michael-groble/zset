@@ -63,7 +63,7 @@ pub struct Iter<'a, T: 'a, S> {
     marker: PhantomData<&'a Node<T, S>>,
 }
 
-impl<T: std::fmt::Display + std::fmt::Debug, S: std::fmt::Display> Debug for SkipList<T, S> {
+impl<T: std::fmt::Display + Debug, S: std::fmt::Display + Debug> Debug for SkipList<T, S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         writeln!(
             f,
@@ -84,12 +84,12 @@ impl<T: std::fmt::Display + std::fmt::Debug, S: std::fmt::Display> Debug for Ski
                     };
                     writeln!(
                         f,
-                        "      height: {} span: {} {:?} {} {} {:?}",
+                        "      height: {} span: {} {:?} {:?} {:?} {:?}",
                         node.levels.len(),
                         level.span,
                         head,
-                        node.element(),
-                        node.score(),
+                        node.element,
+                        node.score,
                         prev
                     )?;
                     head = level.next;
@@ -621,6 +621,33 @@ impl<T: std::cmp::PartialOrd, S: std::cmp::PartialOrd + Clone + Copy> SkipList<T
             update[l] = head;
         }
         Search { update, head }
+    }
+
+    pub fn rank(&self, elt: &T, score: S) -> Option<usize> {
+        let mut node = Some(self.head);
+        let mut rank: usize = 0;
+
+        for l in (0..=self.highest_level).rev() {
+            while let Some(level) =
+                unsafe { Some(&node.unwrap().as_ref().levels[l]) }.filter(|level| {
+                    level.next.map_or(false, |next| {
+                        let next = unsafe { next.as_ref() };
+                        *next.score() < score || *next.score() == score && *next.element() <= *elt
+                    })
+                })
+            {
+                rank += level.span;
+                node = level.next;
+            }
+            if node
+                .and_then(|node| unsafe { node.as_ref().element.as_ref() })
+                .filter(|element| *element == elt)
+                .is_some()
+            {
+                return Some(rank - 1);
+            }
+        }
+        None
     }
 }
 
