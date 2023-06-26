@@ -345,6 +345,116 @@ fn test_rank() {
 }
 
 #[test]
+fn test_range_iter() {
+    let mut l = SkipList::new();
+
+    l.insert('a', 1);
+    l.insert('b', 2);
+    l.insert('c', 3);
+    l.insert('d', 4);
+    l.insert('e', 5);
+
+    let mut iter = l.range_iter(..3);
+    assert_eq!(iter.next(), Some((&'a', 1)));
+    assert_eq!(iter.next(), Some((&'b', 2)));
+    assert_eq!(iter.next(), None);
+
+    let mut iter = l.range_iter(..1);
+    assert_eq!(iter.next(), None);
+
+    let mut iter = l.range_iter(..=1);
+    assert_eq!(iter.next(), Some((&'a', 1)));
+    assert_eq!(iter.next(), None);
+
+    let mut iter = l.range_iter(3..5);
+    assert_eq!(iter.next(), Some((&'c', 3)));
+    assert_eq!(iter.next(), Some((&'d', 4)));
+    assert_eq!(iter.next(), None);
+
+    let mut iter = l.range_iter(5..);
+    assert_eq!(iter.next(), Some((&'e', 5)));
+    assert_eq!(iter.next(), None);
+
+    let mut iter = l.range_iter((Bound::Excluded(5), Bound::Unbounded));
+    assert_eq!(iter.next(), None);
+}
+
+#[test]
+fn test_lexrange_iter() {
+    let mut l = SkipList::new();
+
+    l.insert('a', 0);
+    l.insert('b', 0);
+    l.insert('c', 0);
+    l.insert('d', 0);
+    l.insert('e', 0);
+
+    let mut iter = l.lexrange_iter(..'c');
+    assert_eq!(iter.next(), Some((&'a', 0)));
+    assert_eq!(iter.next(), Some((&'b', 0)));
+    assert_eq!(iter.next(), None);
+
+    let mut iter = l.lexrange_iter(..'a');
+    assert_eq!(iter.next(), None);
+
+    let mut iter = l.lexrange_iter(..='a');
+    assert_eq!(iter.next(), Some((&'a', 0)));
+    assert_eq!(iter.next(), None);
+
+    let mut iter = l.lexrange_iter('c'..'e');
+    assert_eq!(iter.next(), Some((&'c', 0)));
+    assert_eq!(iter.next(), Some((&'d', 0)));
+    assert_eq!(iter.next(), None);
+
+    let mut iter = l.lexrange_iter('e'..);
+    assert_eq!(iter.next(), Some((&'e', 0)));
+    assert_eq!(iter.next(), None);
+
+    let mut iter = l.lexrange_iter((Bound::Excluded('e'), Bound::Unbounded));
+    assert_eq!(iter.next(), None);
+}
+
+#[test]
+fn test_rank_iter() {
+    let mut l = SkipList::new();
+
+    l.insert('a', 1);
+    l.insert('b', 2);
+    l.insert('c', 3);
+    l.insert('d', 4);
+    l.insert('e', 5);
+
+    let mut iter = l.rank_iter(..3);
+    assert_eq!(iter.next(), Some((&'a', 1)));
+    assert_eq!(iter.next(), Some((&'b', 2)));
+    assert_eq!(iter.next(), Some((&'c', 3)));
+    assert_eq!(iter.next(), None);
+
+    let mut iter = l.rank_iter(0..0);
+    assert_eq!(iter.next(), None);
+
+    let mut iter = l.rank_iter(0..=0);
+    assert_eq!(iter.next(), Some((&'a', 1)));
+    assert_eq!(iter.next(), None);
+
+    let mut iter = l.rank_iter(0..1);
+    assert_eq!(iter.next(), Some((&'a', 1)));
+    assert_eq!(iter.next(), None);
+
+    let mut iter = l.rank_iter(2..4);
+    assert_eq!(iter.next(), Some((&'c', 3)));
+    assert_eq!(iter.next(), Some((&'d', 4)));
+    assert_eq!(iter.next(), None);
+
+    let mut iter = l.rank_iter(4..);
+    assert_eq!(iter.next(), Some((&'e', 5)));
+    assert_eq!(iter.next(), None);
+
+    let mut iter = l.rank_iter((Bound::Excluded(4), Bound::Unbounded));
+    assert_eq!(iter.next(), None);
+}
+
+#[test]
 fn test_drop() {
     static mut DROPS: i32 = 0;
 

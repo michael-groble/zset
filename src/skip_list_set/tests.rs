@@ -137,3 +137,48 @@ fn test_reverse_rank() {
     assert_eq!(l.reverse_rank(&'c'), Some((0, &3)));
     assert_eq!(l.reverse_rank(&'d'), None);
 }
+
+#[test]
+fn test_range_iter() {
+    let mut l = SkipListSet::new();
+
+    l.insert('a', 1);
+    l.insert('b', 2);
+    l.insert('c', 3);
+
+    let mut iter = l.range_iter(..3);
+    assert_eq!(iter.next(), Some((&'a', 1)));
+    assert_eq!(iter.next(), Some((&'b', 2)));
+    assert_eq!(iter.next(), None);
+    // full test in SkipList
+}
+
+#[test]
+fn test_lexrange_iter() {
+    let mut l = SkipListSet::new();
+
+    l.insert('a', 0);
+    l.insert('b', 0);
+    l.insert('c', 0);
+
+    let mut iter = l.lexrange_iter(..'c');
+    assert_eq!(iter.next(), Some((&'a', 0)));
+    assert_eq!(iter.next(), Some((&'b', 0)));
+    assert_eq!(iter.next(), None);
+    // full test in SkipList
+}
+
+#[test]
+fn test_rank_iter() {
+    let mut l = SkipListSet::new();
+
+    l.insert('a', 1);
+    l.insert('b', 2);
+    l.insert('c', 3);
+
+    let mut iter = l.rank_iter(..2);
+    assert_eq!(iter.next(), Some((&'a', 1)));
+    assert_eq!(iter.next(), Some((&'b', 2)));
+    assert_eq!(iter.next(), None);
+    // full test in SkipList
+}

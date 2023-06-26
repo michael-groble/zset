@@ -1,5 +1,4 @@
 // mpop
-// range
 // remrange
 
 use std::borrow::Borrow;
@@ -127,6 +126,24 @@ impl<T: Hash + Eq + PartialOrd, S: PartialOrd + Copy> SkipListSet<T, S> {
         self.rank(element)
             .map(|(rank, score)| (self.len() - 1 - rank, score))
     }
+
+    pub fn range_iter<R: RangeBounds<S> + Clone>(&self, range: R) -> Iter<'_, T, S> {
+        Iter {
+            iter: self.list.range_iter(range),
+        }
+    }
+
+    /// undefined behavior if scores are not all identical
+    pub fn lexrange_iter<R: RangeBounds<K> + Clone, K>(&self, range: R) -> Iter<'_, T, S>
+    where
+        T: Borrow<K>,
+        K: PartialOrd,
+        Key<T>: Borrow<K>,
+    {
+        Iter {
+            iter: self.list.lexrange_iter(range),
+        }
+    }
 }
 
 impl<T: ?Sized + Hash + Eq, S> SkipListSet<T, S> {
@@ -145,6 +162,12 @@ impl<T: ?Sized + Hash + Eq, S> SkipListSet<T, S> {
     pub fn iter(&self) -> Iter<'_, T, S> {
         Iter {
             iter: self.list.iter(),
+        }
+    }
+
+    pub fn rank_iter<R: RangeBounds<usize>>(&self, range: R) -> Iter<'_, T, S> {
+        Iter {
+            iter: self.list.rank_iter(range),
         }
     }
 }

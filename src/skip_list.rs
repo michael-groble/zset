@@ -220,8 +220,78 @@ impl<T, S> SkipList<T, S> {
         }
     }
 
+    fn limited_iter(
+        &self,
+        head: Option<(NonNull<Node<T, S>>, usize)>,
+        tail: Option<(NonNull<Node<T, S>>, usize)>,
+    ) -> Iter<'_, T, S> {
+        if let Some((head, tail)) = head.zip(tail) {
+            Iter {
+                head: Some(head.0),
+                tail: Some(tail.0),
+                len: 1 + tail.1 - head.1,
+                marker: PhantomData,
+            }
+        } else {
+            Iter {
+                head: None,
+                tail: None,
+                len: 0,
+                marker: PhantomData,
+            }
+        }
+    }
+
     pub fn len(&self) -> usize {
         self.len
+    }
+
+    fn node_at_rank(&self, rank: usize) -> NodePointer<T, S> {
+        let mut node = Some(self.head);
+        let mut traversed: usize = 0;
+        let one_rank = rank + 1; // to account for the 1 that comes from traversing past head
+
+        for l in (0..=self.highest_level).rev() {
+            while let Some(level) = node
+                .map(|node| unsafe { &node.as_ref().levels[l] })
+                .filter(|level| level.next.is_some() && traversed + level.span <= one_rank)
+            {
+                traversed += level.span;
+                node = level.next;
+            }
+            if traversed == one_rank && node != Some(self.head) {
+                return node;
+            }
+        }
+        None
+    }
+
+    pub fn rank_iter<R: RangeBounds<usize>>(&self, range: R) -> Iter<'_, T, S> {
+        let empty = range_is_empty(&range);
+        let first = if empty {
+            None
+        } else {
+            match range.start_bound() {
+                Bound::Excluded(min) => self.node_at_rank(min + 1).map(|node| (node, min + 1)),
+                Bound::Included(min) => self.node_at_rank(*min).map(|node| (node, *min)),
+                Bound::Unbounded => {
+                    unsafe { self.head.as_ref().levels[0].next }.map(|next| (next, 0_usize))
+                }
+            }
+        };
+        let last = if empty {
+            None
+        } else {
+            match range.end_bound() {
+                Bound::Excluded(max) if max > &0 => {
+                    self.node_at_rank(max - 1).map(|node| (node, max - 1))
+                }
+                Bound::Included(max) => self.node_at_rank(*max).map(|node| (node, *max)),
+                Bound::Unbounded => self.tail.map(|tail| (tail, self.len - 1)),
+                _ => None, // Exclude(0)
+            }
+        };
+        self.limited_iter(first, last)
     }
 }
 
@@ -346,6 +416,17 @@ where
             head = next;
         }
         removed
+    }
+
+    pub fn range_iter<R: RangeBounds<Q> + Clone, Q>(&self, range: R) -> Iter<'_, T, S>
+    where
+        Q: PartialOrd,
+        S: Borrow<Q>,
+    {
+        self.limited_iter(
+            self.first_in_range(range.clone()),
+            self.last_in_range(range),
+        )
     }
 }
 
@@ -475,6 +556,18 @@ where
         }
         removed
     }
+
+    /// undefined behavior if scores are not all identical
+    pub fn lexrange_iter<R: RangeBounds<K> + Clone, K>(&self, range: R) -> Iter<'_, T, S>
+    where
+        K: PartialOrd,
+        T: Borrow<K>,
+    {
+        self.limited_iter(
+            self.first_in_lexrange(range.clone()),
+            self.last_in_lexrange(range),
+        )
+    }
 }
 
 impl<T, S> SkipList<T, S> {
@@ -508,7 +601,7 @@ impl<T: std::cmp::PartialOrd, S: std::cmp::PartialOrd + Clone + Copy> SkipList<T
         let node: NodePointer<T, S> = Some(Box::leak(node).into());
         if let Some(node) = node {
             unsafe {
-                for (l, mut insert_level) in (*node.as_ptr()).levels.iter_mut().enumerate() {
+                for (l, insert_level) in (*node.as_ptr()).levels.iter_mut().enumerate() {
                     if let Some(update_level) = insertion.update[l] {
                         let update_level = &mut (*update_level.as_ptr()).levels[l];
                         insert_level.next = update_level.next;
