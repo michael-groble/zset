@@ -385,10 +385,11 @@ where
         }
     }
 
-    pub fn delete_range_by_score<R: RangeBounds<Q>, Q>(&mut self, range: R) -> usize
+    pub fn delete_range_by_score<R: RangeBounds<Q>, Q, F>(&mut self, range: R, mut callback: F) -> usize
     where
         Q: PartialOrd,
         S: Borrow<Q>,
+        F: FnMut(&mut T)
     {
         let mut update: [NodePointer<T, S>; MAX_LEVELS] = [None; MAX_LEVELS];
         let mut head: NodePointer<T, S> = Some(self.head);
@@ -411,7 +412,8 @@ where
             let next = unsafe { node.as_ref().levels[0].next };
             let mut search = Search { update, head };
             self.delete_node(&mut search, node);
-            unsafe { Box::from_raw(node.as_ptr()) };
+            let n = unsafe { Box::from_raw(node.as_ptr()) };
+            callback(&mut n.element.unwrap());
             removed += 1;
             head = next;
         }

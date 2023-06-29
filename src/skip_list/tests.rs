@@ -211,17 +211,17 @@ fn test_delete_range_by_score() {
     l.insert('c', 3.0);
     l.insert('d', 4.0);
 
-    l.delete_range_by_score(2.5..2.9);
+    l.delete_range_by_score(2.5..2.9, |_| {});
     assert_eq!(l.len, 4);
-    l.delete_range_by_score(5.5..5.9);
+    l.delete_range_by_score(5.5..5.9, |_| {});
     assert_eq!(l.len, 4);
-    l.delete_range_by_score(3.0..);
+    l.delete_range_by_score(3.0.., |_| {});
     assert_eq!(l.len, 2);
     let mut iter = l.iter();
     assert_eq!(iter.next(), Some((&'a', 1.0)));
     assert_eq!(iter.next(), Some((&'b', 2.0)));
     assert_eq!(iter.next(), None);
-    l.delete_range_by_score(..=1.0);
+    l.delete_range_by_score(..=1.0, |_| {});
     assert_eq!(l.len, 1);
     let mut iter = l.iter();
     assert_eq!(iter.next(), Some((&'b', 2.0)));
@@ -527,7 +527,7 @@ fn test_drop_with_range() {
     l.insert(Elem(3), 3);
     l.insert(Elem(4), 4);
 
-    l.delete_range_by_score(2..=3);
+    l.delete_range_by_score(2..=3, |_| {});
     assert_eq!(unsafe { DROPS }, 2);
     drop(l);
     assert_eq!(unsafe { DROPS }, 4);

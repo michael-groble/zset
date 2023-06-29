@@ -182,3 +182,57 @@ fn test_rank_iter() {
     assert_eq!(iter.next(), None);
     // full test in SkipList
 }
+
+
+#[test]
+fn test_delete_range() {
+    let mut l = SkipListSet::new();
+
+    l.insert('a', 1.0);
+    l.insert('b', 1.0);
+    l.insert('c', 2.0);
+    l.insert('d', 3.0);
+    l.insert('e', 4.0);
+    l.insert('f', 4.0);
+    l.insert('g', 5.0);
+
+    assert_eq!(l.delete_range_by_score(..1.0), 0);
+    assert_eq!(l.len(), 7);
+    assert_eq!(l.delete_range_by_score(..=1.0), 2);
+    assert_eq!(l.len(), 5);
+    assert_eq!(l.delete_range_by_score(3.1..4.0), 0);
+    assert_eq!(l.len(), 5);
+    assert_eq!(l.delete_range_by_score(3.0..4.0), 1);
+    assert_eq!(l.len(), 4);
+    assert_eq!(l.delete_range_by_score(4.0..), 3);
+    assert_eq!(l.len(), 1);
+    let mut iter = l.iter();
+    assert_eq!(iter.next(), Some((&'c', 2.0)));
+    assert_eq!(iter.next(), None)
+}
+
+#[test]
+fn test_drop_delete_in_range() {
+    static mut DROPS: i32 = 0;
+
+    #[derive(Default, PartialEq, PartialOrd, Hash, Eq)]
+    struct Elem(i32);
+
+    impl Drop for Elem {
+        fn drop(&mut self) {
+            unsafe {
+                DROPS += 1;
+            }
+        }
+    }
+
+    let mut l = SkipListSet::new();
+    l.insert(Elem(1), 1);
+    l.insert(Elem(2), 2);
+    l.insert(Elem(3), 3);
+    l.insert(Elem(4), 4);
+    l.delete_range_by_score(3..);
+    assert_eq!(unsafe { DROPS }, 2);
+    drop(l);
+    assert_eq!(unsafe { DROPS }, 4);
+}

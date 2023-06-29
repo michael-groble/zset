@@ -1,4 +1,5 @@
-// mpop
+// popmax
+// popmin
 // remrange
 
 use std::borrow::Borrow;
@@ -143,6 +144,14 @@ impl<T: Hash + Eq + PartialOrd, S: PartialOrd + Copy> SkipListSet<T, S> {
         Iter {
             iter: self.list.lexrange_iter(range),
         }
+    }
+
+    pub fn delete_range_by_score<R: RangeBounds<S>>(&mut self, range: R) -> usize
+    {
+        self.list.delete_range_by_score(range, |key| {
+            self.hash.remove(key).expect("element missing from hash");
+            unsafe { Box::from_raw(key.value.as_ptr()) };
+        })
     }
 }
 
