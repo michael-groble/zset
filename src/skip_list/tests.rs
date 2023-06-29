@@ -82,7 +82,7 @@ fn test_same_score_ordering() {
 fn test_update_with_wrong_score() {
     let mut l = SkipList::new();
     l.insert('a', 1);
-    l.update_score('a', 2, 1);
+    l.update_score(&'a', 2, 1);
 }
 
 #[test]
@@ -90,7 +90,7 @@ fn test_update_with_wrong_score() {
 fn test_update_with_wrong_element() {
     let mut l = SkipList::new();
     l.insert('a', 1);
-    l.update_score('b', 1, 2);
+    l.update_score(&'b', 1, 2);
 }
 
 #[test]
@@ -106,12 +106,12 @@ fn test_update_score() {
     assert_eq!(iter.next(), Some((&'b', 2.0)));
     assert_eq!(iter.next(), Some((&'a', 3.0)));
     assert_eq!(iter.next(), None);
-    l.update_score('b', 2.0, 2.5);
+    l.update_score(&'b', 2.0, 2.5);
     let mut iter = l.iter();
     assert_eq!(iter.next(), Some((&'c', 1.0)));
     assert_eq!(iter.next(), Some((&'b', 2.5)));
     assert_eq!(iter.next(), Some((&'a', 3.0)));
-    l.update_score('b', 2.5, 3.5);
+    l.update_score(&'b', 2.5, 3.5);
     let mut iter = l.iter();
     assert_eq!(iter.next(), Some((&'c', 1.0)));
     assert_eq!(iter.next(), Some((&'a', 3.0)));
@@ -125,7 +125,7 @@ fn test_update_score_boxed() {
     l.insert(Box::new('c'), 1);
     l.insert(Box::new('b'), 2);
     l.insert(Box::new('a'), 3);
-    l.update_score(Box::new('b'), 2, 5);
+    l.update_score(&Box::new('b'), 2, 5);
     let mut iter = l.iter();
     assert_eq!(iter.next(), Some((&Box::new('c'), 1)));
     assert_eq!(iter.next(), Some((&Box::new('a'), 3)));

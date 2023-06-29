@@ -56,23 +56,26 @@ impl<T: ?Sized + Hash + Eq + PartialOrd> PartialOrd for Key<T> {
 
 impl<T: Hash + Eq + PartialOrd, S: PartialOrd + Copy> SkipListSet<T, S> {
     pub fn insert(&mut self, element: T, score: S) {
-        let boxed = Box::new(element);
-        let leaked: NonNull<T> = Box::leak(boxed).into();
-        // need to check if already exists in hash and update score if so
-        self.list.insert(
-            Key {
-                value: leaked,
-                marker: PhantomData,
-            },
-            score,
-        );
-        self.hash.insert(
-            Key {
-                value: leaked,
-                marker: PhantomData,
-            },
-            score,
-        );
+        if let Some((elt, existing_score)) = self.hash.get_key_value(&element) {
+            self.list.update_score(elt, *existing_score, score);
+        } else {
+            let boxed = Box::new(element);
+            let leaked: NonNull<T> = Box::leak(boxed).into();
+            self.list.insert(
+                Key {
+                    value: leaked,
+                    marker: PhantomData,
+                },
+                score,
+            );
+            self.hash.insert(
+                Key {
+                    value: leaked,
+                    marker: PhantomData,
+                },
+                score,
+            );
+        }
     }
 
     pub fn delete(&mut self, element: &T) -> bool {
@@ -146,8 +149,7 @@ impl<T: Hash + Eq + PartialOrd, S: PartialOrd + Copy> SkipListSet<T, S> {
         }
     }
 
-    pub fn delete_range_by_score<R: RangeBounds<S>>(&mut self, range: R) -> usize
-    {
+    pub fn delete_range_by_score<R: RangeBounds<S>>(&mut self, range: R) -> usize {
         self.list.delete_range_by_score(range, |key| {
             self.hash.remove(key).expect("element missing from hash");
             unsafe { Box::from_raw(key.value.as_ptr()) };

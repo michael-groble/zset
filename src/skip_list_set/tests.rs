@@ -26,6 +26,16 @@ fn test_basic() {
 }
 
 #[test]
+fn test_reinsert_updates_score() {
+    let mut l = SkipListSet::new();
+    l.insert('a', 1);
+    l.insert('a', 2);
+    let mut iter = l.iter();
+    assert_eq!(iter.next(), Some((&'a', 2)));
+    assert_eq!(iter.next(), None);
+}
+
+#[test]
 fn test_drop() {
     static mut DROPS: i32 = 0;
 
@@ -182,7 +192,6 @@ fn test_rank_iter() {
     assert_eq!(iter.next(), None);
     // full test in SkipList
 }
-
 
 #[test]
 fn test_delete_range() {

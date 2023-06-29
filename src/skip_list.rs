@@ -385,11 +385,15 @@ where
         }
     }
 
-    pub fn delete_range_by_score<R: RangeBounds<Q>, Q, F>(&mut self, range: R, mut callback: F) -> usize
+    pub fn delete_range_by_score<R: RangeBounds<Q>, Q, F>(
+        &mut self,
+        range: R,
+        mut callback: F,
+    ) -> usize
     where
         Q: PartialOrd,
         S: Borrow<Q>,
-        F: FnMut(&mut T)
+        F: FnMut(&mut T),
     {
         let mut update: [NodePointer<T, S>; MAX_LEVELS] = [None; MAX_LEVELS];
         let mut head: NodePointer<T, S> = Some(self.head);
@@ -633,7 +637,7 @@ impl<T: std::cmp::PartialOrd, S: std::cmp::PartialOrd + Clone + Copy> SkipList<T
         self.remove_retain(elt, score).map(|n| n.element.unwrap())
     }
 
-    pub fn update_score(&mut self, elt: T, current_score: S, new_score: S) {
+    pub fn update_score(&mut self, elt: &T, current_score: S, new_score: S) {
         let mut search = self.search(&elt, current_score);
         let node = search
             .node()
@@ -641,7 +645,7 @@ impl<T: std::cmp::PartialOrd, S: std::cmp::PartialOrd + Clone + Copy> SkipList<T
         unsafe {
             let node_ref = node.as_ptr();
             assert!(
-                current_score == *(*node_ref).score() && elt == *(*node_ref).element(),
+                current_score == *(*node_ref).score() && *elt == *(*node_ref).element(),
                 "found node doesn't match"
             );
 
