@@ -370,32 +370,11 @@ where
         S: Borrow<Q>,
         F: FnMut(&mut T),
     {
-        let mut update: [NodePointer<T, S>; MAX_LEVELS] = [None; MAX_LEVELS];
-        let mut head = self.head;
-        for l in (0..=self.highest_level).rev() {
-            while let Some(next) = unsafe { head.as_ref().levels[l].next }
-                .filter(|next| range_starts_after(&range, unsafe { next.as_ref().score() }))
-            {
-                head = next
-            }
-
-            update[l] = Some(head);
-        }
-        let mut head = unsafe { head.as_ref().levels[0].next };
-        let mut removed = 0;
-        while head.map_or(false, |node| {
-            !range_ends_before(&range, unsafe { node.as_ref().score() })
-        }) {
-            let node = head.unwrap();
-            let next = unsafe { node.as_ref().levels[0].next };
-            let mut search = Search { update, head };
-            self.delete_node(&mut search, node);
-            let n = unsafe { Box::from_raw(node.as_ptr()) };
-            callback(&mut n.element.unwrap());
-            removed += 1;
-            head = next;
-        }
-        removed
+        self.delete_while(
+            |node| range_starts_after(&range, node.score()),
+            |node| !range_ends_before(&range, node.score()),
+            callback,
+        )
     }
 
     pub fn range_iter<R: RangeBounds<Q> + Clone, Q>(&self, range: R) -> Iter<'_, T, S>
@@ -485,31 +464,11 @@ where
         T: Borrow<K>,
         K: PartialOrd,
     {
-        let mut update: [NodePointer<T, S>; MAX_LEVELS] = [None; MAX_LEVELS];
-        let mut head = self.head;
-        for l in (0..=self.highest_level).rev() {
-            while let Some(next) = unsafe { head.as_ref().levels[l].next }
-                .filter(|next| range_starts_after(&range, unsafe { next.as_ref().element() }))
-            {
-                head = next
-            }
-
-            update[l] = Some(head);
-        }
-        let mut head = unsafe { head.as_ref().levels[0].next };
-        let mut removed = 0;
-        while head.map_or(false, |node| {
-            !range_ends_before(&range, unsafe { node.as_ref().element() })
-        }) {
-            let node = head.unwrap();
-            let next = unsafe { node.as_ref().levels[0].next };
-            let mut search = Search { update, head };
-            self.delete_node(&mut search, node);
-            unsafe { Box::from_raw(node.as_ptr()) };
-            removed += 1;
-            head = next;
-        }
-        removed
+        self.delete_while(
+            |node| range_starts_after(&range, node.element()),
+            |node| !range_ends_before(&range, node.element()),
+            |_| {},
+        )
     }
 
     /// undefined behavior if scores are not all identical
@@ -555,6 +514,38 @@ impl<T, S> SkipList<T, S> {
             }
         }
         return (node, rank);
+    }
+
+    fn delete_while<F, G, D>(&mut self, before: F, after: G, mut delete: D) -> usize
+    where
+        F: Fn(&Node<T, S>) -> bool,
+        G: Fn(&Node<T, S>) -> bool,
+        D: FnMut(&mut T),
+    {
+        let mut update: [NodePointer<T, S>; MAX_LEVELS] = [None; MAX_LEVELS];
+        let mut head = self.head;
+        for l in (0..=self.highest_level).rev() {
+            while let Some(next) = unsafe { head.as_ref().levels[l].next }
+                .filter(|next| before(unsafe { next.as_ref() }))
+            {
+                head = next
+            }
+
+            update[l] = Some(head);
+        }
+        let mut head = unsafe { head.as_ref().levels[0].next };
+        let mut removed = 0;
+        while head.map_or(false, |node| after(unsafe { node.as_ref() })) {
+            let node = head.unwrap();
+            let next = unsafe { node.as_ref().levels[0].next };
+            let mut search = Search { update, head };
+            self.delete_node(&mut search, node);
+            let n = unsafe { Box::from_raw(node.as_ptr()) };
+            delete(&mut n.element.unwrap());
+            removed += 1;
+            head = next;
+        }
+        removed
     }
 }
 
@@ -672,21 +663,21 @@ impl<T: std::cmp::PartialOrd, S: std::cmp::PartialOrd + Clone + Copy> SkipList<T
 
     fn search(&self, elt: &T, score: S) -> Search<T, S> {
         let mut update: [NodePointer<T, S>; MAX_LEVELS] = [None; MAX_LEVELS];
-        let mut head: NodePointer<T, S> = Some(self.head);
+        let mut head = self.head;
 
         for l in (0..=self.highest_level).rev() {
-            while let Some(next) =
-                unsafe { &head.unwrap().as_ref().levels[l].next }.filter(|next| {
-                    let next = unsafe { next.as_ref() };
-                    *next.score() < score || *next.score() == score && *next.element() < *elt
-                })
-            {
-                head = Some(next);
+            while let Some(next) = unsafe { &head.as_ref().levels[l].next }.filter(|next| {
+                let next = unsafe { next.as_ref() };
+                *next.score() < score || *next.score() == score && *next.element() < *elt
+            }) {
+                head = next;
             }
-
-            update[l] = head;
+            update[l] = Some(head);
         }
-        Search { update, head }
+        Search {
+            update,
+            head: Some(head),
+        }
     }
 
     pub fn rank(&self, elt: &T, score: S) -> Option<usize> {
