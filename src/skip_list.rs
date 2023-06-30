@@ -247,20 +247,19 @@ impl<T, S> SkipList<T, S> {
     }
 
     fn node_at_rank(&self, rank: usize) -> NodePointer<T, S> {
-        let mut node = Some(self.head);
+        let mut node = self.head;
         let mut traversed: usize = 0;
         let one_rank = rank + 1; // to account for the 1 that comes from traversing past head
 
         for l in (0..=self.highest_level).rev() {
-            while let Some(level) = node
-                .map(|node| unsafe { &node.as_ref().levels[l] })
+            while let Some(level) = unsafe { Some(&node.as_ref().levels[l]) }
                 .filter(|level| level.next.is_some() && traversed + level.span <= one_rank)
             {
                 traversed += level.span;
-                node = level.next;
+                node = level.next.unwrap();
             }
-            if traversed == one_rank && node != Some(self.head) {
-                return node;
+            if traversed == one_rank && node != self.head {
+                return Some(node);
             }
         }
         None
@@ -331,25 +330,14 @@ where
         if !self.is_in_range(range.clone()) {
             return None;
         }
-        let mut node = Some(self.head);
-        let mut rank: usize = 0;
+        let (mut node, rank) =
+            self.descend_with_rank(|next| range_starts_after(&range, next.score()));
 
-        for l in (0..=self.highest_level).rev() {
-            while let Some(level) =
-                unsafe { Some(&node.unwrap().as_ref().levels[l]) }.filter(|level| {
-                    level.next.map_or(false, |next| {
-                        let next = unsafe { next.as_ref() };
-                        range_starts_after(&range, next.score())
-                    })
-                })
-            {
-                rank += level.span;
-                node = level.next;
-            }
+        node = unsafe { (node.as_ref()).levels[0].next.unwrap() };
+        if !range_ends_before(&range, unsafe { node.as_ref().score() }) {
+            return Some((node, rank));
         }
-        node = unsafe { Some((node.unwrap().as_ref()).levels[0].next.unwrap()) };
-        node.filter(|&node| !range_ends_before(&range, unsafe { node.as_ref().score() }))
-            .map(|node| (node, rank))
+        None
     }
 
     pub fn last_in_range<R: RangeBounds<Q> + Clone, Q>(
@@ -363,20 +351,7 @@ where
         if !self.is_in_range(range.clone()) {
             return None;
         }
-        let mut node = self.head;
-        let mut rank: usize = 0;
-
-        for l in (0..=self.highest_level).rev() {
-            while let Some(level) = unsafe { Some(&node.as_ref().levels[l]) }.filter(|level| {
-                level.next.map_or(false, |next| {
-                    let next = unsafe { next.as_ref() };
-                    !range_ends_before(&range, next.score())
-                })
-            }) {
-                rank += level.span;
-                node = level.next.unwrap();
-            }
-        }
+        let (node, rank) = self.descend_with_rank(|next| !range_ends_before(&range, next.score()));
 
         if range_starts_after(&range, unsafe { node.as_ref().score() }) {
             None
@@ -396,18 +371,17 @@ where
         F: FnMut(&mut T),
     {
         let mut update: [NodePointer<T, S>; MAX_LEVELS] = [None; MAX_LEVELS];
-        let mut head: NodePointer<T, S> = Some(self.head);
+        let mut head = self.head;
         for l in (0..=self.highest_level).rev() {
-            while let Some(next) = head
-                .and_then(|head| unsafe { head.as_ref().levels[l].next })
+            while let Some(next) = unsafe { head.as_ref().levels[l].next }
                 .filter(|next| range_starts_after(&range, unsafe { next.as_ref().score() }))
             {
-                head = Some(next)
+                head = next
             }
 
-            update[l] = head;
+            update[l] = Some(head);
         }
-        head = unsafe { head.unwrap().as_ref().levels[0].next };
+        let mut head = unsafe { head.as_ref().levels[0].next };
         let mut removed = 0;
         while head.map_or(false, |node| {
             !range_ends_before(&range, unsafe { node.as_ref().score() })
@@ -474,25 +448,13 @@ where
         if !self.is_in_lexrange(range.clone()) {
             return None;
         }
-        let mut node = Some(self.head);
-        let mut rank: usize = 0;
-
-        for l in (0..=self.highest_level).rev() {
-            while let Some(level) =
-                unsafe { Some(&node.unwrap().as_ref().levels[l]) }.filter(|level| {
-                    level.next.map_or(false, |next| {
-                        let next = unsafe { next.as_ref() };
-                        range_starts_after(&range, next.element())
-                    })
-                })
-            {
-                rank += level.span;
-                node = level.next;
-            }
+        let (mut node, rank) =
+            self.descend_with_rank(|next| range_starts_after(&range, next.element()));
+        node = unsafe { node.as_ref().levels[0].next.unwrap() };
+        if !range_ends_before(&range, unsafe { node.as_ref().element() }) {
+            return Some((node, rank));
         }
-        node = unsafe { Some((node.unwrap().as_ref()).levels[0].next.unwrap()) };
-        node.filter(|&node| !range_ends_before(&range, unsafe { node.as_ref().element() }))
-            .map(|node| (node, rank))
+        None
     }
 
     /// undefined behavior if scores are not all identical
@@ -507,20 +469,8 @@ where
         if !self.is_in_lexrange(range.clone()) {
             return None;
         }
-        let mut node = self.head;
-        let mut rank: usize = 0;
-
-        for l in (0..=self.highest_level).rev() {
-            while let Some(level) = unsafe { Some(&node.as_ref().levels[l]) }.filter(|level| {
-                level.next.map_or(false, |next| {
-                    let next = unsafe { next.as_ref() };
-                    !range_ends_before(&range, next.element())
-                })
-            }) {
-                rank += level.span;
-                node = level.next.unwrap();
-            }
-        }
+        let (node, rank) =
+            self.descend_with_rank(|next| !range_ends_before(&range, next.element()));
 
         if range_starts_after(&range, unsafe { node.as_ref().element() }) {
             None
@@ -536,18 +486,17 @@ where
         K: PartialOrd,
     {
         let mut update: [NodePointer<T, S>; MAX_LEVELS] = [None; MAX_LEVELS];
-        let mut head: NodePointer<T, S> = Some(self.head);
+        let mut head = self.head;
         for l in (0..=self.highest_level).rev() {
-            while let Some(next) = head
-                .and_then(|head| unsafe { head.as_ref().levels[l].next })
+            while let Some(next) = unsafe { head.as_ref().levels[l].next }
                 .filter(|next| range_starts_after(&range, unsafe { next.as_ref().element() }))
             {
-                head = Some(next)
+                head = next
             }
 
-            update[l] = head;
+            update[l] = Some(head);
         }
-        head = unsafe { head.unwrap().as_ref().levels[0].next };
+        let mut head = unsafe { head.as_ref().levels[0].next };
         let mut removed = 0;
         while head.map_or(false, |node| {
             !range_ends_before(&range, unsafe { node.as_ref().element() })
@@ -586,6 +535,26 @@ impl<T, S> SkipList<T, S> {
             highest_level: 0,
             marker: PhantomData,
         }
+    }
+
+    fn descend_with_rank<F>(&self, f: F) -> (NonNull<Node<T, S>>, usize)
+    where
+        F: Fn(&Node<T, S>) -> bool,
+    {
+        let mut node = self.head;
+        let mut rank: usize = 0;
+        for l in (0..=self.highest_level).rev() {
+            while let Some(level) = unsafe { Some(&node.as_ref().levels[l]) }.filter(|level| {
+                level.next.map_or(false, |next| {
+                    let next = unsafe { next.as_ref() };
+                    f(&next)
+                })
+            }) {
+                rank += level.span;
+                node = level.next.unwrap();
+            }
+        }
+        return (node, rank);
     }
 }
 
@@ -680,25 +649,23 @@ impl<T: std::cmp::PartialOrd, S: std::cmp::PartialOrd + Clone + Copy> SkipList<T
     fn insertion(&self, elt: &T, score: S) -> Insertion<T, S> {
         let mut update: [NodePointer<T, S>; MAX_LEVELS] = [None; MAX_LEVELS];
         let mut rank: [usize; MAX_LEVELS] = [0; MAX_LEVELS];
-        let mut head: NodePointer<T, S> = Some(self.head);
+        let mut head = self.head;
         for l in (0..=self.highest_level).rev() {
             rank[l] = if l == self.highest_level {
                 0
             } else {
                 rank[l + 1]
             };
-            while let Some(level) =
-                unsafe { Some(&head.unwrap().as_ref().levels[l]) }.filter(|level| {
-                    level.next.map_or(false, |next| {
-                        let next = unsafe { next.as_ref() };
-                        *next.score() < score || *next.score() == score && *next.element() < *elt
-                    })
+            while let Some(level) = unsafe { Some(&head.as_ref().levels[l]) }.filter(|level| {
+                level.next.map_or(false, |next| {
+                    let next = unsafe { next.as_ref() };
+                    *next.score() < score || *next.score() == score && *next.element() < *elt
                 })
-            {
+            }) {
                 rank[l] += level.span;
-                head = level.next;
+                head = level.next.unwrap();
             }
-            update[l] = head;
+            update[l] = Some(head);
         }
         Insertion { update, rank }
     }
@@ -723,23 +690,20 @@ impl<T: std::cmp::PartialOrd, S: std::cmp::PartialOrd + Clone + Copy> SkipList<T
     }
 
     pub fn rank(&self, elt: &T, score: S) -> Option<usize> {
-        let mut node = Some(self.head);
+        let mut node = self.head;
         let mut rank: usize = 0;
 
         for l in (0..=self.highest_level).rev() {
-            while let Some(level) =
-                unsafe { Some(&node.unwrap().as_ref().levels[l]) }.filter(|level| {
-                    level.next.map_or(false, |next| {
-                        let next = unsafe { next.as_ref() };
-                        *next.score() < score || *next.score() == score && *next.element() <= *elt
-                    })
+            while let Some(level) = unsafe { Some(&node.as_ref().levels[l]) }.filter(|level| {
+                level.next.map_or(false, |next| {
+                    let next = unsafe { next.as_ref() };
+                    *next.score() < score || *next.score() == score && *next.element() <= *elt
                 })
-            {
+            }) {
                 rank += level.span;
-                node = level.next;
+                node = level.next.unwrap();
             }
-            if node
-                .and_then(|node| unsafe { node.as_ref().element.as_ref() })
+            if unsafe { node.as_ref().element.as_ref() }
                 .filter(|element| *element == elt)
                 .is_some()
             {
