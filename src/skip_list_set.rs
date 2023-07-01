@@ -1,6 +1,5 @@
 // popmax
 // popmin
-// remrange
 
 use std::borrow::Borrow;
 use std::cmp::Ordering;
@@ -100,12 +99,7 @@ impl<T: Hash + Eq + PartialOrd, S: PartialOrd + Copy> SkipListSet<T, S> {
     }
 
     /// undefined behavior if scores are not all identical
-    pub fn count_in_lexrange<R: RangeBounds<K> + Clone, K>(&self, range: R) -> usize
-    where
-        T: Borrow<K>,
-        K: PartialOrd,
-        Key<T>: Borrow<K>,
-    {
+    pub fn count_in_lexrange<R: RangeBounds<T> + Clone>(&self, range: R) -> usize {
         let mut count: usize = 0;
         if let Some((_, rank)) = self.list.first_in_lexrange(range.clone()) {
             count = self.len() - rank;
@@ -138,12 +132,7 @@ impl<T: Hash + Eq + PartialOrd, S: PartialOrd + Copy> SkipListSet<T, S> {
     }
 
     /// undefined behavior if scores are not all identical
-    pub fn lexrange_iter<R: RangeBounds<K> + Clone, K>(&self, range: R) -> Iter<'_, T, S>
-    where
-        T: Borrow<K>,
-        K: PartialOrd,
-        Key<T>: Borrow<K>,
-    {
+    pub fn lexrange_iter<R: RangeBounds<T> + Clone>(&self, range: R) -> Iter<'_, T, S> {
         Iter {
             iter: self.list.lexrange_iter(range),
         }
@@ -151,6 +140,21 @@ impl<T: Hash + Eq + PartialOrd, S: PartialOrd + Copy> SkipListSet<T, S> {
 
     pub fn delete_range_by_score<R: RangeBounds<S>>(&mut self, range: R) -> usize {
         self.list.delete_range_by_score(range, |key| {
+            self.hash.remove(key).expect("element missing from hash");
+            unsafe { Box::from_raw(key.value.as_ptr()) };
+        })
+    }
+
+    pub fn delete_range_by_rank<R: RangeBounds<usize>>(&mut self, range: R) -> usize {
+        self.list.delete_range_by_rank(range, |key| {
+            self.hash.remove(key).expect("element missing from hash");
+            unsafe { Box::from_raw(key.value.as_ptr()) };
+        })
+    }
+
+    pub fn delete_range_by_lex<R: RangeBounds<T>>(&mut self, range: R) -> usize
+where {
+        self.list.delete_range_by_lex(range, |key| {
             self.hash.remove(key).expect("element missing from hash");
             unsafe { Box::from_raw(key.value.as_ptr()) };
         })

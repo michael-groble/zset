@@ -194,7 +194,7 @@ fn test_rank_iter() {
 }
 
 #[test]
-fn test_delete_range() {
+fn test_delete_range_by_score() {
     let mut l = SkipListSet::new();
 
     l.insert('a', 1.0);
@@ -217,6 +217,68 @@ fn test_delete_range() {
     assert_eq!(l.len(), 1);
     let mut iter = l.iter();
     assert_eq!(iter.next(), Some((&'c', 2.0)));
+    assert_eq!(iter.next(), None)
+}
+
+#[test]
+fn test_delete_range_by_rank() {
+    let mut l = SkipListSet::new();
+
+    l.insert('a', 1);
+    l.insert('b', 1);
+    l.insert('c', 2);
+    l.insert('d', 3);
+    l.insert('e', 4);
+    l.insert('f', 4);
+    l.insert('g', 5);
+
+    assert_eq!(l.delete_range_by_rank(..0), 0);
+    assert_eq!(l.len(), 7);
+    assert_eq!(l.delete_range_by_rank(..=1), 2);
+    assert_eq!(l.len(), 5);
+    assert_eq!(l.delete_range_by_rank(5..), 0);
+    assert_eq!(l.len(), 5);
+    assert_eq!(l.delete_range_by_rank(3..5), 2);
+    assert_eq!(l.len(), 3);
+    assert_eq!(
+        l.delete_range_by_rank((Bound::Excluded(1), Bound::Included(5))),
+        1
+    );
+    assert_eq!(l.len(), 2);
+    let mut iter = l.iter();
+    assert_eq!(iter.next(), Some((&'c', 2)));
+    assert_eq!(iter.next(), Some((&'d', 3)));
+    assert_eq!(iter.next(), None)
+}
+
+#[test]
+fn test_delete_range_by_lex() {
+    let mut l = SkipListSet::new();
+
+    l.insert('a', 1);
+    l.insert('b', 1);
+    l.insert('c', 2);
+    l.insert('d', 3);
+    l.insert('e', 4);
+    l.insert('f', 4);
+    l.insert('g', 5);
+
+    assert_eq!(l.delete_range_by_lex(..'a'), 0);
+    assert_eq!(l.len(), 7);
+    assert_eq!(l.delete_range_by_lex(..='b'), 2);
+    assert_eq!(l.len(), 5);
+    assert_eq!(l.delete_range_by_lex('h'..), 0);
+    assert_eq!(l.len(), 5);
+    assert_eq!(l.delete_range_by_lex('f'..'h'), 2);
+    assert_eq!(l.len(), 3);
+    assert_eq!(
+        l.delete_range_by_lex((Bound::Excluded('d'), Bound::Included('h'))),
+        1
+    );
+    assert_eq!(l.len(), 2);
+    let mut iter = l.iter();
+    assert_eq!(iter.next(), Some((&'c', 2)));
+    assert_eq!(iter.next(), Some((&'d', 3)));
     assert_eq!(iter.next(), None)
 }
 

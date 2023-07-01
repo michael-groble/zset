@@ -266,31 +266,80 @@ impl<T, S> SkipList<T, S> {
     }
 
     pub fn rank_iter<R: RangeBounds<usize>>(&self, range: R) -> Iter<'_, T, S> {
-        let empty = range_is_empty(&range);
+        let (min, max) = self.rank_bounds(range);
+        let empty = (max - min) < 1;
         let first = if empty {
             None
         } else {
-            match range.start_bound() {
-                Bound::Excluded(min) => self.node_at_rank(min + 1).map(|node| (node, min + 1)),
-                Bound::Included(min) => self.node_at_rank(*min).map(|node| (node, *min)),
-                Bound::Unbounded => {
-                    unsafe { self.head.as_ref().levels[0].next }.map(|next| (next, 0_usize))
-                }
+            match min {
+                0 => unsafe { self.head.as_ref().levels[0].next },
+                _ => self.node_at_rank(min),
             }
+            .map(|node| (node, min))
         };
         let last = if empty {
             None
         } else {
-            match range.end_bound() {
-                Bound::Excluded(max) if max > &0 => {
-                    self.node_at_rank(max - 1).map(|node| (node, max - 1))
-                }
-                Bound::Included(max) => self.node_at_rank(*max).map(|node| (node, *max)),
-                Bound::Unbounded => self.tail.map(|tail| (tail, self.len - 1)),
-                _ => None, // Exclude(0)
+            match max {
+                max if max == self.len => self.tail,
+                _ => self.node_at_rank(max - 1),
             }
+            .map(|node| (node, max - 1))
         };
         self.limited_iter(first, last)
+    }
+
+    pub fn delete_range_by_rank<R: RangeBounds<usize>, F>(
+        &mut self,
+        range: R,
+        mut callback: F,
+    ) -> usize
+    where
+        F: FnMut(&mut T),
+    {
+        // start and end need to be one-ranked, that's already true for end, but not start, from rank_bounds
+        let (mut start, end) = self.rank_bounds(range);
+        if (end - start) < 1 {
+            return 0;
+        }
+        let start = start + 1;
+        self.delete_while(
+            |_, traversed| traversed < start,
+            |_, traversed| traversed <= end,
+            callback,
+        )
+    }
+
+    /// Converts a range into (min, max) tuple
+    ///
+    /// where min is inclusive and max is exclusive
+    /// returns (0, 0) to indicate "empty" range
+    fn rank_bounds<R: RangeBounds<usize>>(&self, range: R) -> (usize, usize) {
+        let empty = (0, 0);
+        if self.len == 0 {
+            return empty;
+        }
+        let mut start = match range.start_bound() {
+            Bound::Excluded(min) => *min + 1,
+            Bound::Included(min) => *min,
+            Bound::Unbounded => 0,
+        };
+        if start > self.len - 1 {
+            return empty;
+        }
+        let mut end = match range.end_bound() {
+            Bound::Excluded(max) => *max,
+            Bound::Included(max) => *max + 1,
+            Bound::Unbounded => self.len,
+        };
+
+        if end > self.len {
+            end = self.len;
+        }
+        if (end - start) > 0 {
+            return (start, end);
+        }
+        empty
     }
 }
 
@@ -371,8 +420,8 @@ where
         F: FnMut(&mut T),
     {
         self.delete_while(
-            |node| range_starts_after(&range, node.score()),
-            |node| !range_ends_before(&range, node.score()),
+            |node, _| range_starts_after(&range, node.score()),
+            |node, _| !range_ends_before(&range, node.score()),
             callback,
         )
     }
@@ -459,15 +508,20 @@ where
     }
 
     /// undefined behavior if scores are not all identical
-    pub fn delete_range_by_lex<R: RangeBounds<K>, K>(&mut self, range: R) -> usize
+    pub fn delete_range_by_lex<R: RangeBounds<K>, K, F>(
+        &mut self,
+        range: R,
+        mut callback: F,
+    ) -> usize
     where
         T: Borrow<K>,
         K: PartialOrd,
+        F: FnMut(&mut T),
     {
         self.delete_while(
-            |node| range_starts_after(&range, node.element()),
-            |node| !range_ends_before(&range, node.element()),
-            |_| {},
+            |node, _| range_starts_after(&range, node.element()),
+            |node, _| !range_ends_before(&range, node.element()),
+            callback,
         )
     }
 
@@ -518,24 +572,30 @@ impl<T, S> SkipList<T, S> {
 
     fn delete_while<F, G, D>(&mut self, before: F, after: G, mut delete: D) -> usize
     where
-        F: Fn(&Node<T, S>) -> bool,
-        G: Fn(&Node<T, S>) -> bool,
+        F: Fn(&Node<T, S>, usize) -> bool,
+        G: Fn(&Node<T, S>, usize) -> bool,
         D: FnMut(&mut T),
     {
         let mut update: [NodePointer<T, S>; MAX_LEVELS] = [None; MAX_LEVELS];
         let mut head = self.head;
+        let mut traversed: usize = 0;
         for l in (0..=self.highest_level).rev() {
-            while let Some(next) = unsafe { head.as_ref().levels[l].next }
-                .filter(|next| before(unsafe { next.as_ref() }))
-            {
-                head = next
+            while let Some(level) = unsafe { Some(&head.as_ref().levels[l]) }.filter(|level| {
+                level.next.map_or(false, |next| {
+                    let next = unsafe { next.as_ref() };
+                    before(&next, traversed + level.span)
+                })
+            }) {
+                traversed += level.span;
+                head = level.next.unwrap()
             }
 
             update[l] = Some(head);
         }
         let mut head = unsafe { head.as_ref().levels[0].next };
+        traversed += 1;
         let mut removed = 0;
-        while head.map_or(false, |node| after(unsafe { node.as_ref() })) {
+        while head.map_or(false, |node| after(unsafe { node.as_ref() }, traversed)) {
             let node = head.unwrap();
             let next = unsafe { node.as_ref().levels[0].next };
             let mut search = Search { update, head };
@@ -543,6 +603,7 @@ impl<T, S> SkipList<T, S> {
             let n = unsafe { Box::from_raw(node.as_ptr()) };
             delete(&mut n.element.unwrap());
             removed += 1;
+            traversed += 1;
             head = next;
         }
         removed
