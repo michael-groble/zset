@@ -295,7 +295,7 @@ impl<T, S> SkipList<T, S> {
         mut callback: F,
     ) -> usize
     where
-        F: FnMut(&mut T),
+        F: FnMut(&mut T, S),
     {
         // start and end need to be one-ranked, that's already true for end, but not start, from rank_bounds
         let (mut start, end) = self.rank_bounds(range);
@@ -417,7 +417,7 @@ where
     where
         Q: PartialOrd,
         S: Borrow<Q>,
-        F: FnMut(&mut T),
+        F: FnMut(&mut T, S),
     {
         self.delete_while(
             |node, _| range_starts_after(&range, node.score()),
@@ -516,7 +516,7 @@ where
     where
         T: Borrow<K>,
         K: PartialOrd,
-        F: FnMut(&mut T),
+        F: FnMut(&mut T, S),
     {
         self.delete_while(
             |node, _| range_starts_after(&range, node.element()),
@@ -574,7 +574,7 @@ impl<T, S> SkipList<T, S> {
     where
         F: Fn(&Node<T, S>, usize) -> bool,
         G: Fn(&Node<T, S>, usize) -> bool,
-        D: FnMut(&mut T),
+        D: FnMut(&mut T, S),
     {
         let mut update: [NodePointer<T, S>; MAX_LEVELS] = [None; MAX_LEVELS];
         let mut head = self.head;
@@ -601,7 +601,7 @@ impl<T, S> SkipList<T, S> {
             let mut search = Search { update, head };
             self.delete_node(&mut search, node);
             let n = unsafe { Box::from_raw(node.as_ptr()) };
-            delete(&mut n.element.unwrap());
+            delete(&mut n.element.unwrap(), n.score.unwrap());
             removed += 1;
             traversed += 1;
             head = next;

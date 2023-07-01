@@ -283,6 +283,46 @@ fn test_delete_range_by_lex() {
 }
 
 #[test]
+fn test_pop_min() {
+    let mut l = SkipListSet::new();
+
+    l.insert('a', 1);
+    l.insert('b', 2);
+    l.insert('c', 3);
+    l.insert('d', 4);
+
+    let popped = l.pop_min(2);
+    let mut iter = l.iter();
+    assert_eq!(iter.next(), Some((&'c', 3)));
+    assert_eq!(iter.next(), Some((&'d', 4)));
+    assert_eq!(iter.next(), None);
+    let mut iter = popped.iter();
+    assert_eq!(iter.next(), Some(&('a', 1)));
+    assert_eq!(iter.next(), Some(&('b', 2)));
+    assert_eq!(iter.next(), None)
+}
+
+#[test]
+fn test_pop_max() {
+    let mut l = SkipListSet::new();
+
+    l.insert('a', 1);
+    l.insert('b', 2);
+    l.insert('c', 3);
+    l.insert('d', 4);
+
+    let popped = l.pop_max(2);
+    let mut iter = l.iter();
+    assert_eq!(iter.next(), Some((&'a', 1)));
+    assert_eq!(iter.next(), Some((&'b', 2)));
+    assert_eq!(iter.next(), None);
+    let mut iter = popped.iter();
+    assert_eq!(iter.next(), Some(&('d', 4)));
+    assert_eq!(iter.next(), Some(&('c', 3)));
+    assert_eq!(iter.next(), None)
+}
+
+#[test]
 fn test_drop_delete_in_range() {
     static mut DROPS: i32 = 0;
 

@@ -211,17 +211,17 @@ fn test_delete_range_by_score() {
     l.insert('c', 3.0);
     l.insert('d', 4.0);
 
-    l.delete_range_by_score(2.5..2.9, |_| {});
+    l.delete_range_by_score(2.5..2.9, |_, _| {});
     assert_eq!(l.len, 4);
-    l.delete_range_by_score(5.5..5.9, |_| {});
+    l.delete_range_by_score(5.5..5.9, |_, _| {});
     assert_eq!(l.len, 4);
-    l.delete_range_by_score(3.0.., |_| {});
+    l.delete_range_by_score(3.0.., |_, _| {});
     assert_eq!(l.len, 2);
     let mut iter = l.iter();
     assert_eq!(iter.next(), Some((&'a', 1.0)));
     assert_eq!(iter.next(), Some((&'b', 2.0)));
     assert_eq!(iter.next(), None);
-    l.delete_range_by_score(..=1.0, |_| {});
+    l.delete_range_by_score(..=1.0, |_, _| {});
     assert_eq!(l.len, 1);
     let mut iter = l.iter();
     assert_eq!(iter.next(), Some((&'b', 2.0)));
@@ -237,17 +237,17 @@ fn test_delete_range_by_rank() {
     l.insert('c', 3);
     l.insert('d', 4);
 
-    l.delete_range_by_rank(0..0, |_| {});
+    l.delete_range_by_rank(0..0, |_, _| {});
     assert_eq!(l.len, 4);
-    l.delete_range_by_rank(4..5, |_| {});
+    l.delete_range_by_rank(4..5, |_, _| {});
     assert_eq!(l.len, 4);
-    l.delete_range_by_rank(2.., |_| {});
+    l.delete_range_by_rank(2.., |_, _| {});
     assert_eq!(l.len, 2);
     let mut iter = l.iter();
     assert_eq!(iter.next(), Some((&'a', 1)));
     assert_eq!(iter.next(), Some((&'b', 2)));
     assert_eq!(iter.next(), None);
-    l.delete_range_by_rank(..=0, |_| {});
+    l.delete_range_by_rank(..=0, |_, _| {});
     assert_eq!(l.len, 1);
     let mut iter = l.iter();
     assert_eq!(iter.next(), Some((&'b', 2)));
@@ -337,18 +337,18 @@ fn test_delete_range_by_lex() {
     l.insert('j', 1);
     l.insert('k', 1);
 
-    l.delete_range_by_lex('a'..'e', |_| {});
+    l.delete_range_by_lex('a'..'e', |_, _| {});
     assert_eq!(l.len, 5);
-    l.delete_range_by_lex('h'..'j', |_| {});
+    l.delete_range_by_lex('h'..'j', |_, _| {});
     assert_eq!(l.len, 5);
-    l.delete_range_by_lex('i'.., |_| {});
+    l.delete_range_by_lex('i'.., |_, _| {});
     assert_eq!(l.len, 3);
     let mut iter = l.iter();
     assert_eq!(iter.next(), Some((&'e', 1)));
     assert_eq!(iter.next(), Some((&'f', 1)));
     assert_eq!(iter.next(), Some((&'g', 1)));
     assert_eq!(iter.next(), None);
-    l.delete_range_by_lex(..='f', |_| {});
+    l.delete_range_by_lex(..='f', |_, _| {});
     assert_eq!(l.len, 1);
     let mut iter = l.iter();
     assert_eq!(iter.next(), Some((&'g', 1)));
@@ -553,7 +553,7 @@ fn test_drop_with_range() {
     l.insert(Elem(3), 3);
     l.insert(Elem(4), 4);
 
-    l.delete_range_by_score(2..=3, |_| {});
+    l.delete_range_by_score(2..=3, |_, _| {});
     assert_eq!(unsafe { DROPS }, 2);
     drop(l);
     assert_eq!(unsafe { DROPS }, 4);
