@@ -119,7 +119,7 @@ fn main() {
     println!("{}", l.len());
     println!("{:?}", l);
     for c in "hijlk".chars() {
-        l.delete(c, c as u32);
+        l.remove(c, c as u32);
     }
     println!("{}", l.len());
     println!("{:?}", l);

@@ -9,19 +9,19 @@ fn test_basic() {
     }
     let mut iter = l.iter();
     assert_eq!(l.len(), 5);
-    assert_eq!(iter.next(), Some((&'a', 97)));
-    assert_eq!(iter.next(), Some((&'b', 98)));
-    assert_eq!(iter.next(), Some((&'c', 99)));
-    assert_eq!(iter.next(), Some((&'d', 100)));
-    assert_eq!(iter.next(), Some((&'e', 101)));
+    assert_eq!(iter.next(), Some((&'a', &97)));
+    assert_eq!(iter.next(), Some((&'b', &98)));
+    assert_eq!(iter.next(), Some((&'c', &99)));
+    assert_eq!(iter.next(), Some((&'d', &100)));
+    assert_eq!(iter.next(), Some((&'e', &101)));
     assert_eq!(iter.next(), None);
     assert_eq!(l.delete(&'a'), true);
     assert_eq!(l.delete(&'d'), true);
     assert_eq!(l.len(), 3);
     let mut iter = l.iter();
-    assert_eq!(iter.next(), Some((&'b', 98)));
-    assert_eq!(iter.next(), Some((&'c', 99)));
-    assert_eq!(iter.next(), Some((&'e', 101)));
+    assert_eq!(iter.next(), Some((&'b', &98)));
+    assert_eq!(iter.next(), Some((&'c', &99)));
+    assert_eq!(iter.next(), Some((&'e', &101)));
     assert_eq!(iter.next(), None);
 }
 
@@ -31,7 +31,7 @@ fn test_reinsert_updates_score() {
     l.insert('a', 1);
     l.insert('a', 2);
     let mut iter = l.iter();
-    assert_eq!(iter.next(), Some((&'a', 2)));
+    assert_eq!(iter.next(), Some((&'a', &2)));
     assert_eq!(iter.next(), None);
 }
 
@@ -157,8 +157,8 @@ fn test_range_iter() {
     l.insert('c', 3);
 
     let mut iter = l.range_iter(..3);
-    assert_eq!(iter.next(), Some((&'a', 1)));
-    assert_eq!(iter.next(), Some((&'b', 2)));
+    assert_eq!(iter.next(), Some((&'a', &1)));
+    assert_eq!(iter.next(), Some((&'b', &2)));
     assert_eq!(iter.next(), None);
     // full test in SkipList
 }
@@ -172,8 +172,8 @@ fn test_lexrange_iter() {
     l.insert('c', 0);
 
     let mut iter = l.lexrange_iter(..'c');
-    assert_eq!(iter.next(), Some((&'a', 0)));
-    assert_eq!(iter.next(), Some((&'b', 0)));
+    assert_eq!(iter.next(), Some((&'a', &0)));
+    assert_eq!(iter.next(), Some((&'b', &0)));
     assert_eq!(iter.next(), None);
     // full test in SkipList
 }
@@ -187,8 +187,8 @@ fn test_rank_iter() {
     l.insert('c', 3);
 
     let mut iter = l.rank_iter(..2);
-    assert_eq!(iter.next(), Some((&'a', 1)));
-    assert_eq!(iter.next(), Some((&'b', 2)));
+    assert_eq!(iter.next(), Some((&'a', &1)));
+    assert_eq!(iter.next(), Some((&'b', &2)));
     assert_eq!(iter.next(), None);
     // full test in SkipList
 }
@@ -216,7 +216,7 @@ fn test_delete_range_by_score() {
     assert_eq!(l.delete_range_by_score(4.0..), 3);
     assert_eq!(l.len(), 1);
     let mut iter = l.iter();
-    assert_eq!(iter.next(), Some((&'c', 2.0)));
+    assert_eq!(iter.next(), Some((&'c', &2.0)));
     assert_eq!(iter.next(), None)
 }
 
@@ -246,8 +246,8 @@ fn test_delete_range_by_rank() {
     );
     assert_eq!(l.len(), 2);
     let mut iter = l.iter();
-    assert_eq!(iter.next(), Some((&'c', 2)));
-    assert_eq!(iter.next(), Some((&'d', 3)));
+    assert_eq!(iter.next(), Some((&'c', &2)));
+    assert_eq!(iter.next(), Some((&'d', &3)));
     assert_eq!(iter.next(), None)
 }
 
@@ -277,8 +277,8 @@ fn test_delete_range_by_lex() {
     );
     assert_eq!(l.len(), 2);
     let mut iter = l.iter();
-    assert_eq!(iter.next(), Some((&'c', 2)));
-    assert_eq!(iter.next(), Some((&'d', 3)));
+    assert_eq!(iter.next(), Some((&'c', &2)));
+    assert_eq!(iter.next(), Some((&'d', &3)));
     assert_eq!(iter.next(), None)
 }
 
@@ -293,8 +293,8 @@ fn test_pop_min() {
 
     let popped = l.pop_min(2);
     let mut iter = l.iter();
-    assert_eq!(iter.next(), Some((&'c', 3)));
-    assert_eq!(iter.next(), Some((&'d', 4)));
+    assert_eq!(iter.next(), Some((&'c', &3)));
+    assert_eq!(iter.next(), Some((&'d', &4)));
     assert_eq!(iter.next(), None);
     let mut iter = popped.iter();
     assert_eq!(iter.next(), Some(&('a', 1)));
@@ -313,8 +313,8 @@ fn test_pop_max() {
 
     let popped = l.pop_max(2);
     let mut iter = l.iter();
-    assert_eq!(iter.next(), Some((&'a', 1)));
-    assert_eq!(iter.next(), Some((&'b', 2)));
+    assert_eq!(iter.next(), Some((&'a', &1)));
+    assert_eq!(iter.next(), Some((&'b', &2)));
     assert_eq!(iter.next(), None);
     let mut iter = popped.iter();
     assert_eq!(iter.next(), Some(&('d', 4)));
@@ -343,6 +343,32 @@ fn test_drop_delete_in_range() {
     l.insert(Elem(3), 3);
     l.insert(Elem(4), 4);
     l.delete_range_by_score(3..);
+    assert_eq!(unsafe { DROPS }, 2);
+    drop(l);
+    assert_eq!(unsafe { DROPS }, 4);
+}
+
+#[test]
+fn test_drop_in_pop() {
+    static mut DROPS: i32 = 0;
+
+    #[derive(Default, PartialEq, PartialOrd, Hash, Eq)]
+    struct Elem(i32);
+
+    impl Drop for Elem {
+        fn drop(&mut self) {
+            unsafe {
+                DROPS += 1;
+            }
+        }
+    }
+
+    let mut l = SkipListSet::new();
+    l.insert(Elem(1), 1);
+    l.insert(Elem(2), 2);
+    l.insert(Elem(3), 3);
+    l.insert(Elem(4), 4);
+    l.pop_min(2);
     assert_eq!(unsafe { DROPS }, 2);
     drop(l);
     assert_eq!(unsafe { DROPS }, 4);
