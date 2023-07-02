@@ -2,8 +2,20 @@
 name = "zset"
 version = "0.1.0"
 edition = "2021"
+autobenches = false
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 rand = {version="0.8", features=["small_rng"]}
+
+[features]
+benchtest = []
+
+# To run:
+# cargo +nightly -Z unstable-options test --release --features benchtest bench -- -Z unstable-options --report-time
+[[bench]]
+name = "benchtests"
+path = "benches/lib.rs"
+test = true
+required-features = ["benchtest"]

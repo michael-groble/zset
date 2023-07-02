@@ -6,14 +6,20 @@ use std::mem;
 use std::ops::{Bound, RangeBounds};
 use std::ptr::NonNull;
 
-use rand::{Rng, SeedableRng};
+use rand::Rng;
 
 #[cfg(test)]
 mod tests;
 
+#[cfg(not(feature = "benchtest"))]
 thread_local!(
     static ZSET_RNG: RefCell<rand::rngs::SmallRng> =
-        RefCell::new(rand::rngs::SmallRng::from_entropy());
+        RefCell::new(rand::SeedableRng::from_entropy());
+);
+#[cfg(feature = "benchtest")]
+thread_local!(
+    static ZSET_RNG: RefCell<rand::rngs::SmallRng> =
+        RefCell::new(rand::SeedableRng::seed_from_u64(0x0123_4567_89ab_cdef_u64));
 );
 
 const MAX_LEVELS: usize = 32;
