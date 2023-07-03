@@ -62,7 +62,10 @@ where
 }
 
 impl<T, S> SkipListSet<T, S> {
-    pub fn new() -> Self {
+    pub fn new() -> Self
+    where
+        S: Default,
+    {
         SkipListSet {
             list: SkipList::new(),
             hash: HashMap::new(),
@@ -259,7 +262,10 @@ impl<T, S> SkipListSet<T, S> {
     }
 }
 
-impl<T, S> Default for SkipListSet<T, S> {
+impl<T, S> Default for SkipListSet<T, S>
+where
+    S: Default,
+{
     fn default() -> Self {
         Self::new()
     }

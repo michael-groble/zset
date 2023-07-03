@@ -56,10 +56,17 @@ struct Level<T, S> {
 }
 
 struct Node<T, S> {
-    levels: Vec<Level<T, S>>,
+    // redis implementation uses a dynamically sized struct so it's smaller
+    // (by 16 bytes in "normal" usage when element is a pointer as with SkipListSet).
+    // the algorithm doesn't need to know the size of levels after it's allocated, but we don't
+    // have a convenient data type for that in rust
+    levels: Box<[Level<T, S>]>,
     prev: NodePointer<T, S>,
-    element: Option<T>, // only None in head
-    score: Option<S>,   // only None in head
+    // only None in head, no extra memory required when we store pointers as we do with SkipListSet.
+    // otherwise we would need T: Default to construct a head node.
+    element: Option<T>,
+    // ignored in head, save memory by not using Option for numeric types, requires S: Default
+    score: S,
 }
 
 pub struct Iter<'a, T: 'a, S> {
@@ -108,14 +115,20 @@ where
     }
 }
 
-impl<T, S> Default for SkipList<T, S> {
+impl<T, S> Default for SkipList<T, S>
+where
+    S: Default,
+{
     fn default() -> Self {
         Self::new()
     }
 }
 
 impl<T, S> Node<T, S> {
-    fn head() -> Self {
+    fn head() -> Self
+    where
+        S: Default,
+    {
         let mut levels = Vec::with_capacity(MAX_LEVELS);
         for _ in 0..MAX_LEVELS {
             levels.push(Level {
@@ -124,10 +137,10 @@ impl<T, S> Node<T, S> {
             })
         }
         Node {
-            levels,
+            levels: levels.into(),
             prev: None,
             element: None,
-            score: None,
+            score: Default::default(),
         }
     }
 
@@ -136,7 +149,7 @@ impl<T, S> Node<T, S> {
     }
 
     fn score(&self) -> &S {
-        self.score.as_ref().unwrap()
+        &self.score
     }
 
     fn new(element: T, score: S, level: usize) -> Self {
@@ -148,10 +161,10 @@ impl<T, S> Node<T, S> {
             })
         }
         Node {
-            levels,
+            levels: levels.into(),
             prev: None,
             element: Some(element),
-            score: Some(score),
+            score,
         }
     }
 }
@@ -159,7 +172,10 @@ impl<T, S> Node<T, S> {
 type Update<T, S> = [NonNull<Node<T, S>>; MAX_LEVELS];
 
 impl<T, S> SkipList<T, S> {
-    pub fn new() -> Self {
+    pub fn new() -> Self
+    where
+        S: Default,
+    {
         let head = Box::new(Node::head());
         SkipList {
             head: Box::leak(head).into(),
@@ -582,7 +598,7 @@ impl<T, S> SkipList<T, S> {
                 head = next;
                 self.remove_node(&mut update, node);
                 let node = Box::from_raw(node.as_ptr());
-                callback(&mut node.element.unwrap(), node.score.unwrap());
+                callback(&mut node.element.unwrap(), node.score);
             }
             removed += 1;
             traversed += 1;
@@ -722,12 +738,12 @@ impl<T, S> SkipList<T, S> {
                     || *(*(*node_ref).levels[0].next.unwrap().as_ptr()).score() > new_score)
             {
                 // new score does not require list to be re-ordered
-                (*node_ref).score = Some(new_score);
+                (*node_ref).score = new_score;
             } else {
                 // new score requires new location
                 self.remove_node(&mut update, node);
                 let mut old = Box::from_raw(node.as_ptr());
-                old.score = Some(new_score);
+                old.score = new_score;
                 self.reinsert(old);
             }
         }
