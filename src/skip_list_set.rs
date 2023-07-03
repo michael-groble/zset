@@ -1,6 +1,7 @@
 use std::borrow::Borrow;
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::fmt::{Debug, Formatter};
 use std::hash;
 use std::hash::Hash;
 use std::marker::PhantomData;
@@ -19,8 +20,40 @@ pub struct SkipListSet<T, S> {
     marker: PhantomData<Box<T>>,
 }
 
+unsafe impl<T, S> Send for SkipListSet<T, S>
+where
+    T: Send,
+    S: Send,
+{
+}
+unsafe impl<T, S> Sync for SkipListSet<T, S>
+where
+    T: Sync,
+    S: Sync,
+{
+}
+
+impl<T, S> Debug for SkipListSet<T, S>
+where
+    S: Debug,
+    T: Debug,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "{:?}", self.list)
+    }
+}
+
 pub struct Key<T> {
     value: NonNull<T>,
+}
+
+impl<T> Debug for Key<T>
+where
+    T: Debug,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "{:?}", self.value)
+    }
 }
 
 impl<T> Borrow<T> for Key<T> {
@@ -117,7 +150,7 @@ impl<T, S> SkipListSet<T, S> {
         }
     }
 
-    pub fn insert(&mut self, element: T, score: S)
+    pub fn insert(&mut self, element: T, score: S) -> bool
     where
         T: Hash + Eq + PartialOrd,
         S: PartialOrd + Clone,
@@ -125,12 +158,14 @@ impl<T, S> SkipListSet<T, S> {
         if let Some((elt, existing_score)) = self.hash.remove_entry(&element) {
             self.list.update_score(&elt, &existing_score, score.clone());
             self.hash.insert(elt, score);
+            false
         } else {
             let boxed = Box::new(element);
             let leaked: NonNull<T> = Box::leak(boxed).into();
             // for now, assume scores are trivial to clone.  if not, we could box them like element
             self.list.insert(Key { value: leaked }, score.clone());
             self.hash.insert(Key { value: leaked }, score);
+            true
         }
     }
 
