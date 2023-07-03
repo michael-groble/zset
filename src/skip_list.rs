@@ -617,35 +617,68 @@ impl<T, S> SkipList<T, S> {
             self.highest_level = level;
         }
         let node = Box::new(Node::new(elt, score, level));
-        let node: NodePointer<T, S> = Some(Box::leak(node).into());
-        if let Some(node) = node {
-            unsafe {
-                for (l, insert) in (*node.as_ptr()).levels.iter_mut().enumerate() {
-                    let update = &mut (*update[l].as_ptr()).levels[l];
-                    insert.next = update.next;
-                    update.next = Some(NonNull::new_unchecked(node.as_ptr()));
-                    let delta_span = rank[0] - rank[l];
-                    insert.span = update.span - delta_span;
-                    update.span = delta_span + 1;
-                }
-                #[allow(clippy::needless_range_loop)]
-                for l in (level + 1)..=self.highest_level {
-                    (*update[l].as_ptr()).levels[l].span += 1;
-                }
-                (*node.as_ptr()).prev = if update[0] != self.head {
-                    Some(update[0])
-                } else {
-                    None
-                };
+        let node: NonNull<Node<T, S>> = Box::leak(node).into();
+        unsafe { self.insert_node(&mut update, &rank, node) }
+    }
 
-                if let Some(next) = (*node.as_ptr()).levels[0].next {
-                    (*next.as_ptr()).prev = Some(NonNull::new_unchecked(node.as_ptr()));
-                } else {
-                    self.tail = Some(NonNull::new_unchecked(node.as_ptr()));
-                }
-            }
+    /// re-inserts a node _without_ choosing a new random level for it
+    fn reinsert(&mut self, node: Box<Node<T, S>>)
+    where
+        T: PartialOrd,
+        S: PartialOrd,
+    {
+        let mut update: [NonNull<Node<T, S>>; MAX_LEVELS] = [self.head; MAX_LEVELS];
+        let mut rank: [usize; MAX_LEVELS] = [0; MAX_LEVELS];
+        self.descend(
+            |next, _| {
+                next.score() < node.score()
+                    || next.score() == node.score() && next.element() < node.element()
+            },
+            |l, node, traversed| {
+                rank[l] = traversed;
+                update[l] = node;
+                true
+            },
+        );
+        let node: NonNull<Node<T, S>> = Box::leak(node).into();
+        unsafe { self.insert_node(&mut update, &rank, node) }
+    }
+
+    /// inserts node
+    ///
+    /// # Safety
+    ///
+    /// `update` must be consistent with removing `node`
+    unsafe fn insert_node(
+        &mut self,
+        update: &mut Update<T, S>,
+        rank: &[usize; MAX_LEVELS],
+        node: NonNull<Node<T, S>>,
+    ) {
+        let level = (*node.as_ptr()).levels.len() - 1; // see [Node::new]
+        for (l, insert) in (*node.as_ptr()).levels.iter_mut().enumerate() {
+            let update = &mut (*update[l].as_ptr()).levels[l];
+            insert.next = update.next;
+            update.next = Some(NonNull::new_unchecked(node.as_ptr()));
+            let delta_span = rank[0] - rank[l];
+            insert.span = update.span - delta_span;
+            update.span = delta_span + 1;
         }
+        #[allow(clippy::needless_range_loop)]
+        for l in (level + 1)..=self.highest_level {
+            (*update[l].as_ptr()).levels[l].span += 1;
+        }
+        (*node.as_ptr()).prev = if update[0] != self.head {
+            Some(update[0])
+        } else {
+            None
+        };
 
+        if let Some(next) = (*node.as_ptr()).levels[0].next {
+            (*next.as_ptr()).prev = Some(NonNull::new_unchecked(node.as_ptr()));
+        } else {
+            self.tail = Some(NonNull::new_unchecked(node.as_ptr()));
+        }
         self.len += 1;
     }
 
@@ -693,8 +726,9 @@ impl<T, S> SkipList<T, S> {
             } else {
                 // new score requires new location
                 self.remove_node(&mut update, node);
-                let old = Box::from_raw(node.as_ptr());
-                self.insert(old.element.unwrap(), new_score);
+                let mut old = Box::from_raw(node.as_ptr());
+                old.score = Some(new_score);
+                self.reinsert(old);
             }
         }
     }

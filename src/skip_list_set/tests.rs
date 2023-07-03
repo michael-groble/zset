@@ -33,6 +33,7 @@ fn test_reinsert_updates_score() {
     let mut iter = l.iter();
     assert_eq!(iter.next(), Some((&'a', &2)));
     assert_eq!(iter.next(), None);
+    assert_eq!(l.get(&'a'), Some(&2));
 }
 
 #[test]

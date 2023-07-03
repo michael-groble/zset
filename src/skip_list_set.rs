@@ -119,8 +119,9 @@ impl<T, S> SkipListSet<T, S> {
         T: Hash + Eq + PartialOrd,
         S: PartialOrd + Clone,
     {
-        if let Some((elt, existing_score)) = self.hash.get_key_value(&element) {
-            self.list.update_score(elt, existing_score, score);
+        if let Some((elt, existing_score)) = self.hash.remove_entry(&element) {
+            self.list.update_score(&elt, &existing_score, score.clone());
+            self.hash.insert(elt, score);
         } else {
             let boxed = Box::new(element);
             let leaked: NonNull<T> = Box::leak(boxed).into();

@@ -12,6 +12,13 @@ rand = {version="0.8", features=["small_rng"]}
 [features]
 benchtest = []
 
+# to run:
+# cargo run --release --bin advancing_time_bench --features benchtest
+[[bin]]
+name = "advancing_time_bench"
+path = "benches/advancing_time.rs"
+required-features = ["benchtest"]
+
 # To run:
 # cargo +nightly -Z unstable-options test --release --features benchtest bench -- -Z unstable-options --report-time
 [[bench]]
