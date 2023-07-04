@@ -611,30 +611,11 @@ impl<T, S> SkipList<T, S> {
         T: PartialOrd,
         S: PartialOrd,
     {
-        let mut update: [NonNull<Node<T, S>>; MAX_LEVELS] = [self.head; MAX_LEVELS];
-        let mut rank: [usize; MAX_LEVELS] = [0; MAX_LEVELS];
-        self.descend(
-            |next, _| *next.score() < score || *next.score() == score && *next.element() < elt,
-            |l, node, traversed| {
-                rank[l] = traversed;
-                update[l] = node;
-                true
-            },
-        );
+        let (mut update, mut rank) = self.descend_for_insert(&elt, &score);
         let level = random_level();
-        if level > self.highest_level {
-            for l in self.highest_level + 1..=level {
-                rank[l] = 0;
-                update[l] = self.head;
-                unsafe {
-                    (*self.head.as_ptr()).levels[l].span = self.len;
-                };
-            }
-            self.highest_level = level;
-        }
         let node = Box::new(Node::new(elt, score, level));
         let node: NonNull<Node<T, S>> = Box::leak(node).into();
-        unsafe { self.insert_node(&mut update, &rank, node) }
+        unsafe { self.insert_node(&mut update, &mut rank, node) }
     }
 
     /// re-inserts a node _without_ choosing a new random level for it
@@ -643,21 +624,9 @@ impl<T, S> SkipList<T, S> {
         T: PartialOrd,
         S: PartialOrd,
     {
-        let mut update: [NonNull<Node<T, S>>; MAX_LEVELS] = [self.head; MAX_LEVELS];
-        let mut rank: [usize; MAX_LEVELS] = [0; MAX_LEVELS];
-        self.descend(
-            |next, _| {
-                next.score() < node.score()
-                    || next.score() == node.score() && next.element() < node.element()
-            },
-            |l, node, traversed| {
-                rank[l] = traversed;
-                update[l] = node;
-                true
-            },
-        );
+        let (mut update, mut rank) = self.descend_for_insert(node.element(), node.score());
         let node: NonNull<Node<T, S>> = Box::leak(node).into();
-        unsafe { self.insert_node(&mut update, &rank, node) }
+        unsafe { self.insert_node(&mut update, &mut rank, node) }
     }
 
     /// inserts node
@@ -668,10 +637,20 @@ impl<T, S> SkipList<T, S> {
     unsafe fn insert_node(
         &mut self,
         update: &mut Update<T, S>,
-        rank: &[usize; MAX_LEVELS],
+        rank: &mut [usize; MAX_LEVELS],
         node: NonNull<Node<T, S>>,
     ) {
         let level = (*node.as_ptr()).levels.len() - 1; // see [Node::new]
+        if level > self.highest_level {
+            for l in self.highest_level + 1..=level {
+                rank[l] = 0;
+                update[l] = self.head;
+                unsafe {
+                    (*self.head.as_ptr()).levels[l].span = self.len;
+                };
+            }
+            self.highest_level = level;
+        }
         for (l, insert) in (*node.as_ptr()).levels.iter_mut().enumerate() {
             let update = &mut (*update[l].as_ptr()).levels[l];
             insert.next = update.next;
@@ -818,6 +797,24 @@ impl<T, S> SkipList<T, S> {
             },
         );
         update
+    }
+
+    fn descend_for_insert(&self, elt: &T, score: &S) -> (Update<T, S>, [usize; MAX_LEVELS])
+    where
+        T: PartialOrd,
+        S: PartialOrd,
+    {
+        let mut update: [NonNull<Node<T, S>>; MAX_LEVELS] = [self.head; MAX_LEVELS];
+        let mut rank: [usize; MAX_LEVELS] = [0; MAX_LEVELS];
+        self.descend(
+            |next, _| next.score() < score || next.score() == score && next.element() < elt,
+            |l, node, traversed| {
+                rank[l] = traversed;
+                update[l] = node;
+                true
+            },
+        );
+        (update, rank)
     }
 
     pub fn rank(&self, elt: &T, score: &S) -> Option<usize>
