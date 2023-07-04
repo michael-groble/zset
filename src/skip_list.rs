@@ -94,16 +94,15 @@ where
                 let node = unsafe { &*node.as_ptr() };
                 let level = &node.levels[l];
                 let prev = if l == 0 {
-                    node.prev.map(|p| unsafe { &(*p.as_ptr()).element })
+                    node.prev.map(|p| unsafe { (*p.as_ptr()).element() })
                 } else {
                     None
                 };
                 writeln!(
                     f,
-                    "      height: {} span: {} {:?} {:?} {:?} {:?}",
+                    "      height: {} span: {} {:?} {:?}, prev: {:?}",
                     node.levels.len(),
                     level.span,
-                    head,
                     node.element,
                     node.score,
                     prev

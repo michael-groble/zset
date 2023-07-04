@@ -3,8 +3,9 @@ name = "zset"
 version = "0.1.0"
 edition = "2021"
 autobenches = false
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+authors = ["Michael Groble"]
+description = "Data structures needed to implement Redis' sorted set"
+license = "BSD-3-Clause"
 
 [dependencies]
 rand = {version="0.8", features=["small_rng"]}
@@ -12,7 +13,11 @@ rand = {version="0.8", features=["small_rng"]}
 [features]
 benchtest = []
 
-# to run:
+[[example]]
+name = "dump"
+path = "examples/dump.rs"
+
+# to run with repeatable random numbers:
 # cargo run --release --bin advancing_time_bench --features benchtest
 [[bin]]
 name = "advancing_time_bench"
