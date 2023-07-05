@@ -8,14 +8,13 @@ description = "Data structures needed to implement Redis' sorted set"
 license = "BSD-3-Clause"
 
 [dependencies]
-rand = {version="0.8", features=["small_rng"]}
+rand = { version = "~0.8", features=["small_rng"] }
 
 [features]
 benchtest = []
 
 [[example]]
 name = "dump"
-path = "examples/dump.rs"
 
 # to run with repeatable random numbers:
 # cargo run --release --bin advancing_time_bench --features benchtest
